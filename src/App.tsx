@@ -6,12 +6,16 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import ParentDashboard from "./pages/parent/ParentDashboard";
+import ChildrenList from "./pages/parent/ChildrenList";
+import AddChild from "./pages/parent/AddChild";
+import ChildProfile from "./pages/parent/ChildProfile";
 import Screening from "./pages/parent/Screening";
 import Progress from "./pages/parent/Progress";
 import DoctorDashboard from "./pages/doctor/DoctorDashboard";
 import DoctorReview from "./pages/doctor/DoctorReview";
 import TherapistDashboard from "./pages/therapist/TherapistDashboard";
 import TherapyPlan from "./pages/therapist/TherapyPlan";
+import CreateSession from "./pages/therapist/CreateSession";
 import SessionNotes from "./pages/therapist/SessionNotes";
 import NotFound from "./pages/NotFound";
 
@@ -29,8 +33,9 @@ const App = () => (
           
           {/* Parent Routes */}
           <Route path="/parent" element={<ParentDashboard />} />
-          <Route path="/parent/children" element={<ParentDashboard />} />
-          <Route path="/parent/children/add" element={<ParentDashboard />} />
+          <Route path="/parent/children" element={<ChildrenList />} />
+          <Route path="/parent/children/add" element={<AddChild />} />
+          <Route path="/parent/children/:childId" element={<ChildProfile />} />
           <Route path="/parent/screening" element={<Screening />} />
           <Route path="/parent/progress" element={<Progress />} />
           <Route path="/parent/checkins" element={<Progress />} />
@@ -46,6 +51,7 @@ const App = () => (
           <Route path="/therapist/patients" element={<TherapistDashboard />} />
           <Route path="/therapist/sessions" element={<TherapistDashboard />} />
           <Route path="/therapist/plan/:childId" element={<TherapyPlan />} />
+          <Route path="/therapist/plan/:childId/create-session" element={<CreateSession />} />
           <Route path="/therapist/sessions/:sessionId/notes" element={<SessionNotes />} />
           
           <Route path="*" element={<NotFound />} />

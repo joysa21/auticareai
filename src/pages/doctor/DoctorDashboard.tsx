@@ -7,6 +7,7 @@ import {
   Clock,
   AlertCircle,
   ArrowRight,
+  Eye,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,8 @@ export default function DoctorDashboard() {
   const { children } = useAppStore();
 
   const pendingReviews = children.filter((c) => c.screeningStatus === "pending-review");
-  const reviewed = children.filter((c) => c.screeningStatus === "reviewed");
+  const underObservation = children.filter((c) => c.screeningStatus === "under-observation");
+  const diagnosed = children.filter((c) => c.screeningStatus === "diagnosed");
 
   const stats = [
     {
@@ -35,8 +37,14 @@ export default function DoctorDashboard() {
       color: "bg-warning/10 text-warning",
     },
     {
-      label: "Reviewed",
-      value: reviewed.length,
+      label: "Under Observation",
+      value: underObservation.length,
+      icon: Eye,
+      color: "bg-agent-monitoring/10 text-agent-monitoring",
+    },
+    {
+      label: "Diagnosed",
+      value: diagnosed.length,
       icon: CheckCircle2,
       color: "bg-success/10 text-success",
     },
@@ -52,7 +60,7 @@ export default function DoctorDashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-3 mb-8">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
         {stats.map((stat, index) => (
           <motion.div
             key={stat.label}
@@ -136,45 +144,89 @@ export default function DoctorDashboard() {
         )}
       </div>
 
-      {/* Recently Reviewed */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Recently Reviewed</h2>
-          <StatusBadge status="reviewed" />
-        </div>
+      {/* Under Observation */}
+      {underObservation.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Under Observation</h2>
+            <StatusBadge status="under-observation" />
+          </div>
 
-        <div className="space-y-4">
-          {reviewed.map((child, index) => (
-            <motion.div
-              key={child.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.1 }}
-              className="rounded-2xl border border-border bg-card p-6 shadow-card"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-xl bg-success/20 flex items-center justify-center">
-                    <CheckCircle2 className="h-6 w-6 text-success" />
+          <div className="space-y-4">
+            {underObservation.map((child, index) => (
+              <motion.div
+                key={child.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className="rounded-2xl border border-agent-monitoring/30 bg-agent-monitoring/5 p-6"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="h-12 w-12 rounded-xl bg-agent-monitoring/20 flex items-center justify-center">
+                      <Eye className="h-6 w-6 text-agent-monitoring" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">{child.name}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {child.age} years old • Monitoring in progress
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold">{child.name}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {child.age} years old • Review completed
-                    </p>
+                  <div className="flex items-center gap-3">
+                    {child.riskLevel && <StatusBadge riskLevel={child.riskLevel} />}
+                    <Button variant="outline" onClick={() => navigate(`/doctor/review/${child.id}`)}>
+                      View Details
+                    </Button>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  {child.riskLevel && <StatusBadge riskLevel={child.riskLevel} />}
-                  <Button variant="outline" onClick={() => navigate(`/doctor/review/${child.id}`)}>
-                    View Details
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Diagnosed */}
+      {diagnosed.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">Diagnosis Complete</h2>
+            <StatusBadge status="diagnosed" />
+          </div>
+
+          <div className="space-y-4">
+            {diagnosed.map((child, index) => (
+              <motion.div
+                key={child.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className="rounded-2xl border border-border bg-card p-6 shadow-card"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="h-12 w-12 rounded-xl bg-success/20 flex items-center justify-center">
+                      <CheckCircle2 className="h-6 w-6 text-success" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">{child.name}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {child.age} years old • Therapy planning initiated
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {child.riskLevel && <StatusBadge riskLevel={child.riskLevel} />}
+                    <Button variant="outline" onClick={() => navigate(`/doctor/review/${child.id}`)}>
+                      View Details
+                    </Button>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
