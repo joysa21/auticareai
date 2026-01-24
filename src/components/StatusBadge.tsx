@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-type Status = "pending-review" | "reviewed" | "not-started" | "in-progress";
+type Status = "pending-review" | "reviewed" | "not-started" | "in-progress" | "under-observation" | "diagnosed";
 type RiskLevel = "low" | "medium" | "high";
 
 interface StatusBadgeProps {
@@ -24,6 +24,14 @@ const statusConfig: Record<Status, { label: string; className: string }> = {
   },
   reviewed: {
     label: "Reviewed",
+    className: "bg-success/10 text-success",
+  },
+  "under-observation": {
+    label: "Under Observation",
+    className: "bg-agent-monitoring/10 text-agent-monitoring",
+  },
+  diagnosed: {
+    label: "Diagnosis Complete",
     className: "bg-success/10 text-success",
   },
 };

@@ -9,13 +9,26 @@ import {
   Brain,
   User,
   Calendar,
+  Eye,
+  ClipboardCheck,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { AgentPanel, AgentBadge } from "@/components/AgentBadge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useAppStore } from "@/lib/store";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { addMonths, format } from "date-fns";
 
 const mockClinicalSummary = {
   behavioralIndicators: [
@@ -36,12 +49,19 @@ const mockClinicalSummary = {
   ],
 };
 
+type DecisionType = "observation" | "diagnosis" | null;
+type FlowStep = "decision" | "observation-report" | "diagnosis-confirm" | "diagnosis-report" | "complete";
+
 export default function DoctorReview() {
   const navigate = useNavigate();
   const { childId } = useParams();
-  const { children, updateChild } = useAppStore();
+  const { children, updateChild, addReport } = useAppStore();
   const [notes, setNotes] = useState("");
-  const [decision, setDecision] = useState<"confirm" | "observe" | null>(null);
+  const [decision, setDecision] = useState<DecisionType>(null);
+  const [flowStep, setFlowStep] = useState<FlowStep>("decision");
+  const [followUpMonths, setFollowUpMonths] = useState("3");
+  const [monitoringPlan, setMonitoringPlan] = useState("Continue developmental monitoring with weekly check-ins. Upload follow-up video after the observation period.");
+  const [showReportDialog, setShowReportDialog] = useState(false);
 
   const child = children.find((c) => c.id === childId);
 
@@ -58,9 +78,69 @@ export default function DoctorReview() {
     );
   }
 
-  const handleDecision = (selectedDecision: "confirm" | "observe") => {
-    setDecision(selectedDecision);
-    updateChild(child.id, { screeningStatus: "reviewed" });
+  const handleSelectObservation = () => {
+    setDecision("observation");
+    setFlowStep("observation-report");
+  };
+
+  const handleSelectDiagnosis = () => {
+    setDecision("diagnosis");
+    setFlowStep("diagnosis-confirm");
+  };
+
+  const handleGenerateObservationReport = () => {
+    const followUpDate = addMonths(new Date(), parseInt(followUpMonths));
+    
+    const report = {
+      id: `obs-${Date.now()}`,
+      childId: child.id,
+      type: "observation" as const,
+      createdAt: new Date(),
+      doctorNotes: notes,
+      screeningSummary: "Screening completed. Further observation recommended.",
+      monitoringPlan,
+      followUpDate: followUpDate.toISOString(),
+    };
+
+    addReport(report);
+    updateChild(child.id, {
+      screeningStatus: "under-observation",
+      observationEndDate: followUpDate.toISOString(),
+      assignedTherapistId: undefined, // Remove therapist assignment
+    });
+    
+    setFlowStep("complete");
+  };
+
+  const handleGenerateDiagnosticReport = () => {
+    setShowReportDialog(true);
+  };
+
+  const confirmDiagnosticReport = () => {
+    const report = {
+      id: `diag-${Date.now()}`,
+      childId: child.id,
+      type: "diagnostic" as const,
+      createdAt: new Date(),
+      doctorNotes: notes,
+      screeningSummary: "Comprehensive screening and clinical review completed.",
+      diagnosisConfirmation: "Developmental concerns confirmed based on clinical assessment.",
+      developmentalGaps: ["Social communication", "Behavioral patterns", "Motor coordination"],
+      therapyRecommendations: [
+        "Speech therapy 2x weekly",
+        "Occupational therapy 1x weekly",
+        "Social skills group sessions",
+      ],
+    };
+
+    addReport(report);
+    updateChild(child.id, {
+      screeningStatus: "diagnosed",
+      assignedTherapistId: "ther1",
+    });
+    
+    setShowReportDialog(false);
+    setFlowStep("complete");
   };
 
   return (
@@ -179,57 +259,191 @@ export default function DoctorReview() {
           </AgentPanel>
 
           {/* Doctor Decision */}
-          <div className="rounded-2xl border-2 border-primary bg-card p-6 shadow-card">
-            <div className="flex items-center gap-2 mb-4">
-              <FileText className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold">Clinical Decision</h3>
-              <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
-                By Doctor
-              </span>
-            </div>
+          {flowStep === "decision" && (
+            <div className="rounded-2xl border-2 border-primary bg-card p-6 shadow-card">
+              <div className="flex items-center gap-2 mb-4">
+                <FileText className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold">Clinical Decision</h3>
+                <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full">
+                  By Doctor
+                </span>
+              </div>
 
-            <div className="mb-4">
-              <label className="text-sm font-medium mb-2 block">Clinical Notes</label>
-              <Textarea
-                placeholder="Add your clinical observations and notes..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="min-h-[120px]"
-              />
-            </div>
+              <div className="mb-4">
+                <label className="text-sm font-medium mb-2 block">Clinical Notes</label>
+                <Textarea
+                  placeholder="Add your clinical observations and notes..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="min-h-[120px]"
+                />
+              </div>
 
-            <div className="flex gap-3">
-              <Button
-                variant={decision === "confirm" ? "success" : "outline"}
-                className="flex-1"
-                onClick={() => handleDecision("confirm")}
-              >
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                Confirm Diagnosis
-              </Button>
-              <Button
-                variant={decision === "observe" ? "warning" : "outline"}
-                className="flex-1"
-                onClick={() => handleDecision("observe")}
-              >
-                <AlertCircle className="mr-2 h-4 w-4" />
-                Needs More Observation
-              </Button>
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  className="flex-1 border-agent-monitoring text-agent-monitoring hover:bg-agent-monitoring/10"
+                  onClick={handleSelectObservation}
+                >
+                  <Eye className="mr-2 h-4 w-4" />
+                  Under Observation
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1 border-success text-success hover:bg-success/10"
+                  onClick={handleSelectDiagnosis}
+                >
+                  <ClipboardCheck className="mr-2 h-4 w-4" />
+                  Diagnosis Complete
+                </Button>
+              </div>
             </div>
+          )}
 
-            {decision && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mt-4 rounded-lg bg-success/10 p-4 text-center"
-              >
-                <CheckCircle2 className="h-6 w-6 text-success mx-auto mb-2" />
-                <p className="text-sm font-medium">
-                  Decision recorded. Therapy planning will be initiated.
+          {/* Observation Report Form */}
+          {flowStep === "observation-report" && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border-2 border-agent-monitoring bg-card p-6 shadow-card"
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <Eye className="h-5 w-5 text-agent-monitoring" />
+                <h3 className="font-semibold">Generate Observation Report</h3>
+              </div>
+
+              <div className="bg-agent-monitoring/10 rounded-lg p-4 mb-6">
+                <p className="text-sm">
+                  <strong>Note:</strong> This will place the child under observation. 
+                  Therapy planning will <strong>NOT</strong> be initiated. 
+                  The parent will be notified to continue monitoring and upload follow-up videos.
                 </p>
-              </motion.div>
-            )}
-          </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <Label>Follow-up Period</Label>
+                  <div className="flex items-center gap-2 mt-2">
+                    <Input
+                      type="number"
+                      min="1"
+                      max="12"
+                      value={followUpMonths}
+                      onChange={(e) => setFollowUpMonths(e.target.value)}
+                      className="w-24"
+                    />
+                    <span className="text-sm text-muted-foreground">months</span>
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Monitoring Plan</Label>
+                  <Textarea
+                    value={monitoringPlan}
+                    onChange={(e) => setMonitoringPlan(e.target.value)}
+                    className="mt-2 min-h-[100px]"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setFlowStep("decision")}>
+                    Back
+                  </Button>
+                  <Button
+                    className="bg-agent-monitoring hover:bg-agent-monitoring/90"
+                    onClick={handleGenerateObservationReport}
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Generate Observation Report
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Diagnosis Confirmation */}
+          {flowStep === "diagnosis-confirm" && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border-2 border-success bg-card p-6 shadow-card"
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <ClipboardCheck className="h-5 w-5 text-success" />
+                <h3 className="font-semibold">Confirm Diagnosis</h3>
+              </div>
+
+              <div className="bg-success/10 rounded-lg p-4 mb-6">
+                <p className="text-sm">
+                  <strong>Important:</strong> Confirming diagnosis will:
+                </p>
+                <ul className="text-sm mt-2 space-y-1">
+                  <li>• Generate a comprehensive Diagnostic Report</li>
+                  <li>• Share the report with the assigned Therapist</li>
+                  <li>• Initiate Therapy Planning</li>
+                </ul>
+              </div>
+
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => setFlowStep("decision")}>
+                  Back
+                </Button>
+                <Button variant="success" onClick={handleGenerateDiagnosticReport}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  Generate Diagnostic Report
+                </Button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Completion State */}
+          {flowStep === "complete" && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className={`rounded-2xl p-8 text-center ${
+                decision === "observation"
+                  ? "bg-agent-monitoring/10 border-2 border-agent-monitoring"
+                  : "bg-success/10 border-2 border-success"
+              }`}
+            >
+              {decision === "observation" ? (
+                <>
+                  <Eye className="h-12 w-12 text-agent-monitoring mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold mb-2">Observation Report Generated</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Child is kept under observation. The parent has been notified to continue 
+                    monitoring and upload follow-up videos after the recommended period.
+                  </p>
+                  <div className="bg-card rounded-lg p-4 text-left max-w-md mx-auto">
+                    <p className="text-sm font-medium mb-1">Status: Monitoring in progress – no diagnosis yet</p>
+                    <p className="text-xs text-muted-foreground">
+                      Therapist will NOT be notified at this stage.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-12 w-12 text-success mx-auto mb-4" />
+                  <h3 className="text-xl font-semibold mb-2">Diagnostic Report Generated</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Diagnostic report has been generated and shared with the therapist.
+                    Therapy planning has been initiated.
+                  </p>
+                  <div className="bg-card rounded-lg p-4 text-left max-w-md mx-auto">
+                    <p className="text-sm font-medium mb-1">Status: Diagnosis Complete</p>
+                    <p className="text-xs text-muted-foreground">
+                      Therapist has been notified and can now create therapy sessions.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              <Button variant="outline" onClick={() => navigate("/doctor")} className="mt-6">
+                Return to Dashboard
+              </Button>
+            </motion.div>
+          )}
         </div>
 
         {/* Sidebar */}
@@ -264,6 +478,34 @@ export default function DoctorReview() {
           </div>
         </div>
       </div>
+
+      {/* Diagnostic Report Confirmation Dialog */}
+      <Dialog open={showReportDialog} onOpenChange={setShowReportDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Generate Diagnostic Report?</DialogTitle>
+            <DialogDescription>
+              This action will generate a comprehensive diagnostic report and share it with:
+              <ul className="mt-2 space-y-1 text-left">
+                <li>• The child's parent/caregiver</li>
+                <li>• The assigned therapist</li>
+              </ul>
+              <p className="mt-2 font-medium text-foreground">
+                Therapy planning will be initiated automatically.
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowReportDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="success" onClick={confirmDiagnosticReport}>
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+              Confirm & Generate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
