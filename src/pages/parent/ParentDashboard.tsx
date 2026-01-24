@@ -1,0 +1,164 @@
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import {
+  Baby,
+  FileSearch,
+  Calendar,
+  TrendingUp,
+  Plus,
+  ArrowRight,
+  Bot,
+} from "lucide-react";
+import { DashboardLayout } from "@/components/DashboardLayout";
+import { Button } from "@/components/ui/button";
+import { ChildCard } from "@/components/ChildCard";
+import { AgentBadge } from "@/components/AgentBadge";
+import { useAppStore } from "@/lib/store";
+
+export default function ParentDashboard() {
+  const navigate = useNavigate();
+  const { children } = useAppStore();
+
+  const quickActions = [
+    {
+      icon: Baby,
+      label: "Add Child Profile",
+      description: "Register a new child",
+      href: "/parent/children/add",
+      color: "bg-secondary/20",
+    },
+    {
+      icon: FileSearch,
+      label: "Start Early Screening",
+      description: "AI-powered assessment",
+      href: "/parent/screening",
+      color: "bg-primary/20",
+    },
+    {
+      icon: Calendar,
+      label: "Weekly Check-ins",
+      description: "Track development",
+      href: "/parent/checkins",
+      color: "bg-agent-monitoring/20",
+    },
+    {
+      icon: TrendingUp,
+      label: "View Progress",
+      description: "Developmental insights",
+      href: "/parent/progress",
+      color: "bg-success/20",
+    },
+  ];
+
+  return (
+    <DashboardLayout>
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold">Parent Dashboard</h1>
+        <p className="text-muted-foreground mt-2">
+          Monitor your children's development and access screening tools
+        </p>
+      </div>
+
+      {/* AI Support Notice */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-8 rounded-2xl border border-accent/30 gradient-accent p-6 text-primary-foreground"
+      >
+        <div className="flex items-start gap-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20">
+            <Bot className="h-6 w-6" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-lg mb-1">AI-Powered Support</h3>
+            <p className="text-sm opacity-90">
+              Our multi-agent AI system helps screen for early signs of autism.
+              Remember: AI supports decisions, but trained professionals make final assessments.
+            </p>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Quick Actions */}
+      <div className="mb-8">
+        <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {quickActions.map((action, index) => (
+            <motion.button
+              key={action.label}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+              onClick={() => navigate(action.href)}
+              className="group rounded-2xl border border-border bg-card p-6 text-left shadow-card transition-all hover:shadow-elevated hover:-translate-y-1"
+            >
+              <div
+                className={`mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl ${action.color}`}
+              >
+                <action.icon className="h-6 w-6 text-foreground" />
+              </div>
+              <h3 className="font-semibold mb-1 group-hover:text-primary transition-colors">
+                {action.label}
+              </h3>
+              <p className="text-sm text-muted-foreground">{action.description}</p>
+            </motion.button>
+          ))}
+        </div>
+      </div>
+
+      {/* Children */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold">My Children</h2>
+          <Button variant="outline" size="sm" onClick={() => navigate("/parent/children/add")}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Child
+          </Button>
+        </div>
+
+        {children.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {children.map((child, index) => (
+              <motion.div
+                key={child.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <ChildCard
+                  child={child}
+                  onClick={() => navigate(`/parent/children/${child.id}`)}
+                />
+              </motion.div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-2xl border-2 border-dashed border-border p-12 text-center">
+            <Baby className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium mb-2">No children registered yet</h3>
+            <p className="text-muted-foreground mb-4">
+              Add your child's profile to start screening
+            </p>
+            <Button onClick={() => navigate("/parent/children/add")}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Child Profile
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Active Agents */}
+      <div className="mt-8 rounded-2xl border border-border bg-card p-6">
+        <h3 className="font-semibold mb-4">Active AI Agents</h3>
+        <div className="flex flex-wrap gap-3">
+          <AgentBadge type="screening" />
+          <AgentBadge type="monitoring" />
+        </div>
+        <p className="text-sm text-muted-foreground mt-4">
+          These AI agents are available to support your child's developmental journey.
+        </p>
+      </div>
+    </DashboardLayout>
+  );
+}
