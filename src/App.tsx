@@ -11,6 +11,9 @@ import AddChild from "./pages/parent/AddChild";
 import ChildProfile from "./pages/parent/ChildProfile";
 import Screening from "./pages/parent/Screening";
 import Progress from "./pages/parent/Progress";
+import AutismAwareness from "./pages/parent/AutismAwareness";
+import FindProfessionals from "./pages/parent/FindProfessionals";
+import Reports from "./pages/parent/Reports";
 import DoctorDashboard from "./pages/doctor/DoctorDashboard";
 import DoctorReview from "./pages/doctor/DoctorReview";
 import TherapistDashboard from "./pages/therapist/TherapistDashboard";
@@ -39,11 +42,15 @@ const App = () => (
           <Route path="/parent/screening" element={<Screening />} />
           <Route path="/parent/progress" element={<Progress />} />
           <Route path="/parent/checkins" element={<Progress />} />
+          <Route path="/parent/awareness" element={<AutismAwareness />} />
+          <Route path="/parent/find" element={<FindProfessionals />} />
+          <Route path="/parent/reports" element={<Reports />} />
           
           {/* Doctor Routes */}
           <Route path="/doctor" element={<DoctorDashboard />} />
           <Route path="/doctor/patients" element={<DoctorDashboard />} />
           <Route path="/doctor/reviews" element={<DoctorDashboard />} />
+          <Route path="/doctor/reports" element={<Reports />} />
           <Route path="/doctor/review/:childId" element={<DoctorReview />} />
           
           {/* Therapist Routes */}

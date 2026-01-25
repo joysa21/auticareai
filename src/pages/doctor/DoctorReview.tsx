@@ -487,7 +487,7 @@ export default function DoctorReview() {
             <DialogDescription>
               This action will generate a comprehensive diagnostic report and share it with:
               <ul className="mt-2 space-y-1 text-left">
-                <li>• The child's parent/caregiver</li>
+                <li>• The child's parent</li>
                 <li>• The assigned therapist</li>
               </ul>
               <p className="mt-2 font-medium text-foreground">

@@ -23,17 +23,27 @@ interface NavItem {
   icon: React.ElementType;
 }
 
+import {
+  BookOpen,
+  Search as SearchIcon,
+  ClipboardList,
+} from "lucide-react";
+
 const roleNavItems: Record<UserRole, NavItem[]> = {
   parent: [
     { label: "Dashboard", href: "/parent", icon: Home },
     { label: "My Children", href: "/parent/children", icon: Baby },
     { label: "Screening", href: "/parent/screening", icon: FileText },
     { label: "Progress", href: "/parent/progress", icon: Calendar },
+    { label: "Awareness", href: "/parent/awareness", icon: BookOpen },
+    { label: "Find Care", href: "/parent/find", icon: SearchIcon },
+    { label: "Reports", href: "/parent/reports", icon: ClipboardList },
   ],
   doctor: [
     { label: "Dashboard", href: "/doctor", icon: Home },
     { label: "Patients", href: "/doctor/patients", icon: Users },
     { label: "Reviews", href: "/doctor/reviews", icon: FileText },
+    { label: "Reports", href: "/doctor/reports", icon: ClipboardList },
   ],
   therapist: [
     { label: "Dashboard", href: "/therapist", icon: Home },
