@@ -25,7 +25,7 @@ export default function Auth() {
     {
       role: "parent" as UserRole,
       icon: Users,
-      title: "Parent / Caregiver",
+      title: "Parent",
       description: "Monitor your child's development and access screening tools",
     },
     {
