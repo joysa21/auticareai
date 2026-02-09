@@ -16,6 +16,10 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { AgentBadge } from "@/components/AgentBadge";
 import { useAppStore } from "@/lib/store";
+import { runScreening } from "@/services/screening";
+
+const [screeningResult, setScreeningResult] = useState<any>(null);
+
 
 type ScreeningStep = "upload" | "questionnaire" | "processing" | "results";
 
@@ -101,27 +105,39 @@ export default function Screening() {
     }
   };
 
-  const startProcessing = () => {
-    setStep("processing");
-    setProcessingStep(0);
+  const startProcessing = async () => {
+  if (!uploadedFile) return;
 
+  setStep("processing");
+  setProcessingStep(0);
+
+  try {
+    // Animate fake steps WHILE backend runs
     let stepIndex = 0;
-    const runStep = () => {
-      if (stepIndex < processingSteps.length) {
-        setProcessingStep(stepIndex);
-        setTimeout(() => {
-          stepIndex++;
-          runStep();
-        }, processingSteps[stepIndex].duration);
-      } else {
-        // Random risk level for demo
-        const levels: ("low" | "medium" | "high")[] = ["low", "medium", "high"];
-        setRiskLevel(levels[Math.floor(Math.random() * 3)]);
-        setStep("results");
-      }
-    };
-    runStep();
-  };
+    const interval = setInterval(() => {
+      setProcessingStep((prev) => Math.min(prev + 1, processingSteps.length - 1));
+      stepIndex++;
+      if (stepIndex >= processingSteps.length) clearInterval(interval);
+    }, 1500);
+
+    const result = await runScreening(uploadedFile);
+
+    clearInterval(interval);
+
+    setScreeningResult(result);
+
+    // Map backend risk → UI risk
+    const level = result.risk_assessment.level.toLowerCase();
+    setRiskLevel(level === "low risk" ? "low" : level === "medium risk" ? "medium" : "high");
+
+    setStep("results");
+  } catch (err) {
+    console.error(err);
+    alert("Screening failed. Please try again.");
+    setStep("upload");
+  }
+};
+
 
   const riskConfig = {
     low: {
@@ -375,8 +391,9 @@ export default function Screening() {
             <div className="mb-8">
               <h1 className="text-3xl font-bold">Screening Results</h1>
               <p className="text-muted-foreground mt-2">
-                AI-generated screening summary (Simulated)
+                    AI-generated screening summary
               </p>
+
             </div>
 
             <div className="grid gap-6 lg:grid-cols-3">

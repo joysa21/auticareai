@@ -5,6 +5,8 @@ import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/auth';
 import { supabase } from './config/supabase';
+import screeningRoutes from './routes/screening';
+
 
 dotenv.config();
 
@@ -42,6 +44,8 @@ app.use(limiter);
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/screening', screeningRoutes);
+
 
 // Health Check
 app.get('/health', async (req, res) => {
