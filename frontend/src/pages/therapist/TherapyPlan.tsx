@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -16,58 +16,67 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { AgentPanel, AgentBadge } from "@/components/AgentBadge";
-import { useAppStore } from "@/lib/store";
-
-const mockTherapyPlan = {
-  speechTherapy: {
-    aiSuggested: [
-      "Focus on building vocabulary through picture cards",
-      "Practice turn-taking in conversation",
-      "Introduce simple two-word phrases",
-      "Use songs and rhymes for engagement",
-    ],
-    goals: ["Increase vocabulary by 20 words", "Respond to simple questions"],
-  },
-  motorSkills: {
-    aiSuggested: [
-      "Fine motor exercises with playdough",
-      "Threading beads activities",
-      "Drawing and coloring exercises",
-      "Balance and coordination games",
-    ],
-    goals: ["Improve pencil grip", "Complete simple puzzles independently"],
-  },
-  socialInteraction: {
-    aiSuggested: [
-      "Parallel play activities with peers",
-      "Emotion recognition using pictures",
-      "Simple group games",
-      "Role-playing scenarios",
-    ],
-    goals: ["Initiate play with one peer", "Recognize 3 basic emotions"],
-  },
-};
+import { Child } from "@/lib/store";
+import { childrenService } from "@/services/data";
 
 type TherapyArea = "speech" | "motor" | "social";
 
 export default function TherapyPlan() {
   const navigate = useNavigate();
   const { childId } = useParams();
-  const { children } = useAppStore();
   const [editingArea, setEditingArea] = useState<TherapyArea | null>(null);
   const [customGoals, setCustomGoals] = useState<Record<TherapyArea, string>>({
     speech: "",
     motor: "",
     social: "",
   });
+  const [child, setChild] = useState<Child | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const child = children.find((c) => c.id === childId);
+  useEffect(() => {
+    const loadChild = async () => {
+      if (!childId) return;
+      setLoading(true);
+      setError(null);
+
+      const { data, error } = await childrenService.getChildById(childId);
+      if (error) {
+        setError(error.message || "Failed to load child");
+        setLoading(false);
+        return;
+      }
+
+      const dob = new Date(data.date_of_birth);
+      const age = Number.isNaN(dob.getTime())
+        ? 0
+        : Math.max(0, Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)));
+
+      setChild({
+        id: data.id,
+        name: data.name,
+        dateOfBirth: data.date_of_birth,
+        age,
+        gender: data.gender,
+        screeningStatus: data.screening_status,
+        riskLevel: data.risk_level,
+        assignedDoctorId: data.assigned_doctor_id,
+        assignedTherapistId: data.assigned_therapist_id,
+        observationEndDate: data.observation_end_date,
+      });
+      setLoading(false);
+    };
+
+    loadChild();
+  }, [childId]);
 
   if (!child) {
     return (
       <DashboardLayout>
         <div className="text-center py-12">
-          <p className="text-muted-foreground">Patient not found</p>
+          <p className="text-muted-foreground">
+            {loading ? "Loading patient..." : error || "Patient not found"}
+          </p>
           <Button variant="outline" onClick={() => navigate("/therapist")} className="mt-4">
             Back to Dashboard
           </Button>
@@ -83,7 +92,7 @@ export default function TherapyPlan() {
       icon: MessageSquare,
       color: "text-agent-therapy",
       bg: "bg-agent-therapy/10",
-      data: mockTherapyPlan.speechTherapy,
+      data: { aiSuggested: [], goals: [] },
     },
     {
       id: "motor" as TherapyArea,
@@ -91,7 +100,7 @@ export default function TherapyPlan() {
       icon: Hand,
       color: "text-primary",
       bg: "bg-primary/10",
-      data: mockTherapyPlan.motorSkills,
+      data: { aiSuggested: [], goals: [] },
     },
     {
       id: "social" as TherapyArea,
@@ -99,7 +108,7 @@ export default function TherapyPlan() {
       icon: Users,
       color: "text-secondary",
       bg: "bg-secondary/10",
-      data: mockTherapyPlan.socialInteraction,
+      data: { aiSuggested: [], goals: [] },
     },
   ];
 
@@ -172,14 +181,18 @@ export default function TherapyPlan() {
                     AI-Suggested Activities
                   </span>
                 </div>
-                <ul className="space-y-2">
-                  {area.data.aiSuggested.map((suggestion, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm">
-                      <CheckCircle2 className="h-4 w-4 text-success mt-0.5" />
-                      {suggestion}
-                    </li>
-                  ))}
-                </ul>
+                {area.data.aiSuggested.length > 0 ? (
+                  <ul className="space-y-2">
+                    {area.data.aiSuggested.map((suggestion, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm">
+                        <CheckCircle2 className="h-4 w-4 text-success mt-0.5" />
+                        {suggestion}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No AI suggestions available yet.</p>
+                )}
               </div>
 
               {/* Goals */}
@@ -228,6 +241,9 @@ export default function TherapyPlan() {
                         <div className="h-2 w-2 rounded-full bg-primary" />
                         {customGoals[area.id]}
                       </li>
+                    )}
+                    {area.data.goals.length === 0 && !customGoals[area.id] && (
+                      <li className="text-sm text-muted-foreground">No goals added yet.</li>
                     )}
                   </ul>
                 )}

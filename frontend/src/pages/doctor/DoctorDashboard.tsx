@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -13,20 +14,64 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AgentBadge } from "@/components/AgentBadge";
-import { useAppStore } from "@/lib/store";
+import { Child } from "@/lib/store";
+import { childrenService } from "@/services/data";
 
 export default function DoctorDashboard() {
   const navigate = useNavigate();
-  const { children } = useAppStore();
+  const [children, setChildren] = useState<Child[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const pendingReviews = children.filter((c) => c.screeningStatus === "pending-review");
-  const underObservation = children.filter((c) => c.screeningStatus === "under-observation");
-  const diagnosed = children.filter((c) => c.screeningStatus === "diagnosed");
+  useEffect(() => {
+    const loadChildren = async () => {
+      setLoading(true);
+      setLoadError(null);
+      const { data, error } = await childrenService.getChildren();
+      if (error) {
+        setLoadError(error.message || "Failed to load children");
+        setLoading(false);
+        return;
+      }
+
+      const normalized = (data || []).map((child: any) => ({
+        id: child.id,
+        name: child.name,
+        dateOfBirth: child.date_of_birth,
+        age: 0,
+        gender: child.gender,
+        screeningStatus: child.screening_status,
+        riskLevel: child.risk_level,
+        assignedDoctorId: child.assigned_doctor_id,
+        assignedTherapistId: child.assigned_therapist_id,
+        observationEndDate: child.observation_end_date,
+      }));
+
+      setChildren(normalized);
+      setLoading(false);
+    };
+
+    loadChildren();
+  }, []);
+
+  const mappedChildren = useMemo(() => {
+    return children.map((child) => {
+      const dob = new Date(child.dateOfBirth);
+      const age = Number.isNaN(dob.getTime())
+        ? child.age
+        : Math.max(0, Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)));
+      return { ...child, age };
+    });
+  }, [children]);
+
+  const pendingReviews = mappedChildren.filter((c) => c.screeningStatus === "pending-review");
+  const underObservation = mappedChildren.filter((c) => c.screeningStatus === "under-observation");
+  const diagnosed = mappedChildren.filter((c) => c.screeningStatus === "diagnosed");
 
   const stats = [
     {
       label: "Total Patients",
-      value: children.length,
+      value: mappedChildren.length,
       icon: Users,
       color: "bg-primary/10 text-primary",
     },
@@ -103,7 +148,19 @@ export default function DoctorDashboard() {
           <StatusBadge status="pending-review" />
         </div>
 
-        {pendingReviews.length > 0 ? (
+        {loadError && (
+          <div className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+            {loadError}
+          </div>
+        )}
+
+        {loading && (
+          <div className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">
+            Loading patients...
+          </div>
+        )}
+
+        {!loading && pendingReviews.length > 0 ? (
           <div className="space-y-4">
             {pendingReviews.map((child, index) => (
               <motion.div
@@ -136,12 +193,12 @@ export default function DoctorDashboard() {
               </motion.div>
             ))}
           </div>
-        ) : (
+        ) : !loading ? (
           <div className="rounded-2xl border border-dashed border-border p-8 text-center">
             <CheckCircle2 className="mx-auto h-12 w-12 text-success mb-4" />
             <p className="text-muted-foreground">All reviews completed!</p>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Under Observation */}

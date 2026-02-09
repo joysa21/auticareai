@@ -21,6 +21,8 @@ import TherapistDashboard from "./pages/therapist/TherapistDashboard";
 import TherapyPlan from "./pages/therapist/TherapyPlan";
 import CreateSession from "./pages/therapist/CreateSession";
 import SessionNotes from "./pages/therapist/SessionNotes";
+import TherapistPatients from "./pages/therapist/TherapistPatients";
+import TherapistSessions from "./pages/therapist/TherapistSessions";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -57,8 +59,8 @@ const App = () => (
           
           {/* Therapist Routes */}
           <Route path="/therapist" element={<TherapistDashboard />} />
-          <Route path="/therapist/patients" element={<TherapistDashboard />} />
-          <Route path="/therapist/sessions" element={<TherapistDashboard />} />
+          <Route path="/therapist/patients" element={<TherapistPatients />} />
+          <Route path="/therapist/sessions" element={<TherapistSessions />} />
           <Route path="/therapist/plan/:childId" element={<TherapyPlan />} />
           <Route path="/therapist/plan/:childId/create-session" element={<CreateSession />} />
           <Route path="/therapist/sessions/:sessionId/notes" element={<SessionNotes />} />

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -19,7 +19,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AgentPanel, AgentBadge } from "@/components/AgentBadge";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useAppStore } from "@/lib/store";
+import { Child } from "@/lib/store";
+import { authService } from "@/services/auth";
+import { childrenService, reportsService } from "@/services/data";
+import { cvService, CvReport } from "@/services/cv";
 import {
   Dialog,
   DialogContent,
@@ -55,21 +58,89 @@ type FlowStep = "decision" | "observation-report" | "diagnosis-confirm" | "diagn
 export default function DoctorReview() {
   const navigate = useNavigate();
   const { childId } = useParams();
-  const { children, updateChild, addReport } = useAppStore();
   const [notes, setNotes] = useState("");
   const [decision, setDecision] = useState<DecisionType>(null);
   const [flowStep, setFlowStep] = useState<FlowStep>("decision");
   const [followUpMonths, setFollowUpMonths] = useState("3");
   const [monitoringPlan, setMonitoringPlan] = useState("Continue developmental monitoring with weekly check-ins. Upload follow-up video after the observation period.");
   const [showReportDialog, setShowReportDialog] = useState(false);
+  const [cvReport, setCvReport] = useState<CvReport | null>(null);
+  const [cvReportError, setCvReportError] = useState<string | null>(null);
+  const [child, setChild] = useState<Child | null>(null);
+  const [childLoading, setChildLoading] = useState(true);
+  const [childError, setChildError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
 
-  const child = children.find((c) => c.id === childId);
+  useEffect(() => {
+    const loadChild = async () => {
+      if (!childId) return;
+      setChildLoading(true);
+      setChildError(null);
+
+      const { data, error } = await childrenService.getChildById(childId);
+      if (error) {
+        setChildError(error.message || "Failed to load child");
+        setChildLoading(false);
+        return;
+      }
+
+      const dob = new Date(data.date_of_birth);
+      const age = Number.isNaN(dob.getTime())
+        ? 0
+        : Math.max(0, Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)));
+
+      setChild({
+        id: data.id,
+        name: data.name,
+        dateOfBirth: data.date_of_birth,
+        age,
+        gender: data.gender,
+        screeningStatus: data.screening_status,
+        riskLevel: data.risk_level,
+        assignedDoctorId: data.assigned_doctor_id,
+        assignedTherapistId: data.assigned_therapist_id,
+        observationEndDate: data.observation_end_date,
+      });
+      setChildLoading(false);
+    };
+
+    loadChild();
+  }, [childId]);
+
+  useEffect(() => {
+    const loadUser = async () => {
+      const user = await authService.getCurrentUser();
+      setCurrentUserId(user?.id || null);
+    };
+
+    loadUser();
+  }, []);
+
+  useEffect(() => {
+    const fetchReport = async () => {
+      if (!childId) return;
+      try {
+        const response = await cvService.getLatestReport(childId);
+        const report = response?.data?.cv_report as CvReport | undefined;
+        if (report) {
+          setCvReport(report);
+        }
+      } catch (error: any) {
+        setCvReportError(error?.message || "Failed to load screening report");
+      }
+    };
+
+    fetchReport();
+  }, [childId]);
 
   if (!child) {
     return (
       <DashboardLayout>
         <div className="text-center py-12">
-          <p className="text-muted-foreground">Patient not found</p>
+          <p className="text-muted-foreground">
+            {childLoading ? "Loading patient..." : childError || "Patient not found"}
+          </p>
           <Button variant="outline" onClick={() => navigate("/doctor")} className="mt-4">
             Back to Dashboard
           </Button>
@@ -88,25 +159,45 @@ export default function DoctorReview() {
     setFlowStep("diagnosis-confirm");
   };
 
-  const handleGenerateObservationReport = () => {
+  const handleGenerateObservationReport = async () => {
     const followUpDate = addMonths(new Date(), parseInt(followUpMonths));
+
+    if (!currentUserId) {
+      setReportError("You must be signed in to create reports.");
+      return;
+    }
     
     const report = {
-      id: `obs-${Date.now()}`,
       childId: child.id,
       type: "observation" as const,
-      createdAt: new Date(),
       doctorNotes: notes,
       screeningSummary: "Screening completed. Further observation recommended.",
       monitoringPlan,
       followUpDate: followUpDate.toISOString(),
     };
 
-    addReport(report);
-    updateChild(child.id, {
+    const { error: reportError } = await reportsService.createReport(report, currentUserId);
+    if (reportError) {
+      setReportError(reportError.message || "Failed to create report");
+      return;
+    }
+
+    const { error: updateError } = await childrenService.updateChild(child.id, {
       screeningStatus: "under-observation",
       observationEndDate: followUpDate.toISOString(),
-      assignedTherapistId: undefined, // Remove therapist assignment
+      assignedTherapistId: null as unknown as string,
+    });
+
+    if (updateError) {
+      setReportError(updateError.message || "Failed to update child status");
+      return;
+    }
+
+    setChild({
+      ...child,
+      screeningStatus: "under-observation",
+      observationEndDate: followUpDate.toISOString(),
+      assignedTherapistId: undefined,
     });
     
     setFlowStep("complete");
@@ -116,12 +207,15 @@ export default function DoctorReview() {
     setShowReportDialog(true);
   };
 
-  const confirmDiagnosticReport = () => {
+  const confirmDiagnosticReport = async () => {
+    if (!currentUserId) {
+      setReportError("You must be signed in to create reports.");
+      return;
+    }
+
     const report = {
-      id: `diag-${Date.now()}`,
       childId: child.id,
       type: "diagnostic" as const,
-      createdAt: new Date(),
       doctorNotes: notes,
       screeningSummary: "Comprehensive screening and clinical review completed.",
       diagnosisConfirmation: "Developmental concerns confirmed based on clinical assessment.",
@@ -133,8 +227,24 @@ export default function DoctorReview() {
       ],
     };
 
-    addReport(report);
-    updateChild(child.id, {
+    const { error: reportError } = await reportsService.createReport(report, currentUserId);
+    if (reportError) {
+      setReportError(reportError.message || "Failed to create report");
+      return;
+    }
+
+    const { error: updateError } = await childrenService.updateChild(child.id, {
+      screeningStatus: "diagnosed",
+      assignedTherapistId: "ther1",
+    });
+
+    if (updateError) {
+      setReportError(updateError.message || "Failed to update child status");
+      return;
+    }
+
+    setChild({
+      ...child,
       screeningStatus: "diagnosed",
       assignedTherapistId: "ther1",
     });
@@ -160,6 +270,12 @@ export default function DoctorReview() {
         </p>
       </div>
 
+      {reportError && (
+        <div className="mb-6 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          {reportError}
+        </div>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
@@ -183,6 +299,49 @@ export default function DoctorReview() {
           </div>
 
           {/* AI Clinical Summary */}
+          {cvReport && (
+            <AgentPanel type="screening">
+              <div className="flex items-center gap-2 mb-4">
+                <Eye className="h-5 w-5" />
+                <h3 className="font-semibold">CV Screening Report</h3>
+              </div>
+
+              <div className="mb-4">
+                <p className="text-sm text-muted-foreground">{cvReport.risk_assessment.description}</p>
+                <p className="text-sm mt-1">
+                  <strong>Risk:</strong> {cvReport.risk_assessment.level} • <strong>Confidence:</strong> {Math.round(cvReport.risk_assessment.confidence * 100)}%
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {Object.entries(cvReport.metrics.objective_signals).map(([key, value]) => (
+                  <div key={key} className="rounded-lg bg-muted/50 p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium">{key.replace(/_/g, " ")}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${
+                        value.status.includes("below")
+                          ? "bg-warning/10 text-warning"
+                          : "bg-muted text-muted-foreground"
+                      }`}>
+                        {value.status.replace("_", " ")}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-bold">{value.value}</span>
+                      <span className="text-xs text-muted-foreground">/ baseline: {value.baseline}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </AgentPanel>
+          )}
+
+          {cvReportError && (
+            <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+              {cvReportError}
+            </div>
+          )}
+
           <AgentPanel type="clinical">
             <div className="flex items-center gap-2 mb-4">
               <Brain className="h-5 w-5" />

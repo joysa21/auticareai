@@ -13,13 +13,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAppStore } from "@/lib/store";
 import { useToast } from "@/hooks/use-toast";
+import { childrenService } from "@/services/data";
+import { authService } from "@/services/auth";
 
 export default function AddChild() {
   const navigate = useNavigate();
-  const { addChild } = useAppStore();
   const { toast } = useToast();
+  const [isSaving, setIsSaving] = useState(false);
   
   const [name, setName] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
@@ -28,7 +29,7 @@ export default function AddChild() {
   const calculateAge = (dob: string): number => {
     const birthDate = new Date(dob);
     const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
+    let age = today.getFullYear() - birthDate.getFullYear(); 
     const monthDiff = today.getMonth() - birthDate.getMonth();
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--;
@@ -36,10 +37,10 @@ export default function AddChild() {
     return Math.max(0, age);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!name.trim() || !dateOfBirth) {
+    if (!name.trim() || !dateOfBirth) { 
       toast({
         title: "Missing Information",
         description: "Please enter the child's name and date of birth.",
@@ -49,7 +50,6 @@ export default function AddChild() {
     }
 
     const newChild = {
-      id: Date.now().toString(),
       name: name.trim(),
       age: calculateAge(dateOfBirth),
       dateOfBirth,
@@ -57,13 +57,35 @@ export default function AddChild() {
       screeningStatus: "not-started" as const,
     };
 
-    addChild(newChild);
+    setIsSaving(true);
+    const currentUser = await authService.getCurrentUser();
+    if (!currentUser?.id) {
+      setIsSaving(false);
+      toast({
+        title: "Not signed in",
+        description: "Please sign in again to add a child profile.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { error } = await childrenService.createChild(newChild, currentUser.id);
+    if (error) {
+      setIsSaving(false);
+      toast({
+        title: "Failed to create profile",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
     
     toast({
       title: "Child Profile Created",
       description: `${name}'s profile has been added successfully.`,
     });
 
+    setIsSaving(false);
     navigate("/parent/children");
   };
 
@@ -139,9 +161,9 @@ export default function AddChild() {
               <Button type="button" variant="outline" onClick={() => navigate("/parent")} className="flex-1">
                 Cancel
               </Button>
-              <Button type="submit" className="flex-1">
+              <Button type="submit" className="flex-1" disabled={isSaving}>
                 <Save className="mr-2 h-4 w-4" />
-                Create Profile
+                {isSaving ? "Creating..." : "Create Profile"}
               </Button>
             </div>
           </form>

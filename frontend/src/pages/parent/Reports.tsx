@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -22,7 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAppStore, Report } from "@/lib/store";
+import { Child, Report } from "@/lib/store";
+import { childrenService, reportsService } from "@/services/data";
 import { format } from "date-fns";
 import {
   Dialog,
@@ -34,10 +35,76 @@ import {
 
 export default function Reports() {
   const navigate = useNavigate();
-  const { children, reports } = useAppStore();
-  const [selectedChild, setSelectedChild] = useState(children[0]?.id || "");
+  const [children, setChildren] = useState<Child[]>([]);
+  const [selectedChild, setSelectedChild] = useState("");
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
+
+  useEffect(() => {
+    const loadChildren = async () => {
+      setLoading(true);
+      setLoadError(null);
+      const { data, error } = await childrenService.getChildren();
+      if (error) {
+        setLoadError(error.message || "Failed to load children");
+        setLoading(false);
+        return;
+      }
+
+      const normalized = (data || []).map((child: any) => ({
+        id: child.id,
+        name: child.name,
+        dateOfBirth: child.date_of_birth,
+        age: 0,
+        gender: child.gender,
+        screeningStatus: child.screening_status,
+        riskLevel: child.risk_level,
+        assignedDoctorId: child.assigned_doctor_id,
+        assignedTherapistId: child.assigned_therapist_id,
+        observationEndDate: child.observation_end_date,
+      }));
+
+      setChildren(normalized);
+      if (normalized.length > 0) {
+        setSelectedChild((current) => current || normalized[0].id);
+      }
+      setLoading(false);
+    };
+
+    loadChildren();
+  }, []);
+
+  useEffect(() => {
+    const loadReports = async () => {
+      if (!selectedChild) return;
+      const { data, error } = await reportsService.getReports(selectedChild);
+      if (error) {
+        setLoadError(error.message || "Failed to load reports");
+        return;
+      }
+
+      const mappedReports = (data || []).map((report: any) => ({
+        id: report.id,
+        childId: report.child_id,
+        type: report.type,
+        createdAt: new Date(report.created_at),
+        doctorNotes: report.content?.doctorNotes || "",
+        screeningSummary: report.content?.screeningSummary || "",
+        monitoringPlan: report.content?.monitoringPlan,
+        followUpDate: report.content?.followUpDate,
+        diagnosisConfirmation: report.content?.diagnosisConfirmation,
+        developmentalGaps: report.content?.developmentalGaps,
+        therapyRecommendations: report.content?.therapyRecommendations,
+      }));
+
+      setReports(mappedReports);
+    };
+
+    loadReports();
+  }, [selectedChild]);
 
   const childReports = reports.filter((r) => r.childId === selectedChild);
   const child = children.find((c) => c.id === selectedChild);
@@ -73,6 +140,18 @@ export default function Reports() {
         </Select>
       </div>
 
+      {loadError && (
+        <div className="mb-6 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          {loadError}
+        </div>
+      )}
+
+      {loading && (
+        <div className="mb-6 rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">
+          Loading reports...
+        </div>
+      )}
+
       {/* Report Type Legend */}
       <div className="mb-6 flex flex-wrap gap-4">
         <div className="flex items-center gap-2 rounded-lg bg-agent-monitoring/10 px-4 py-2">
@@ -88,7 +167,7 @@ export default function Reports() {
       </div>
 
       {/* Reports List */}
-      {childReports.length > 0 ? (
+      {!loading && childReports.length > 0 ? (
         <div className="space-y-4">
           {childReports.map((report, index) => (
             <motion.div
@@ -155,7 +234,7 @@ export default function Reports() {
             </motion.div>
           ))}
         </div>
-      ) : (
+      ) : !loading ? (
         <div className="rounded-2xl border-2 border-dashed border-border p-12 text-center">
           <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <h3 className="font-semibold text-lg mb-2">No Reports Yet</h3>
@@ -164,7 +243,7 @@ export default function Reports() {
             clinical review from a doctor.
           </p>
         </div>
-      )}
+      ) : null}
 
       {/* Report Detail Modal */}
       <Dialog open={showReportModal} onOpenChange={setShowReportModal}>

@@ -31,6 +31,7 @@ CREATE TABLE public.screening_results (
   child_id UUID REFERENCES public.children(id) ON DELETE CASCADE NOT NULL,
   risk_level TEXT CHECK (risk_level IN ('low', 'medium', 'high')),
   indicators JSONB, -- Array of strings
+  cv_report JSONB, -- Full CV report JSON
   video_url TEXT,
   answers JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL

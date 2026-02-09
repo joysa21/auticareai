@@ -19,11 +19,12 @@ export const childrenService = {
     return { data, error };
   },
 
-  async createChild(child: Omit<Child, 'id'>) {
+  async createChild(child: Omit<Child, 'id'>, parentId: string) {
     const { data, error } = await supabase
       .from('children')
       .insert([
         {
+          parent_id: parentId,
           name: child.name,
           date_of_birth: child.dateOfBirth,
           gender: child.gender,
@@ -46,8 +47,15 @@ export const childrenService = {
     if (updates.dateOfBirth) dbUpdates.date_of_birth = updates.dateOfBirth;
     if (updates.screeningStatus) dbUpdates.screening_status = updates.screeningStatus;
     if (updates.riskLevel) dbUpdates.risk_level = updates.riskLevel;
-    if (updates.assignedDoctorId) dbUpdates.assigned_doctor_id = updates.assignedDoctorId;
-    if (updates.assignedTherapistId) dbUpdates.assigned_therapist_id = updates.assignedTherapistId;
+    if (Object.prototype.hasOwnProperty.call(updates, 'assignedDoctorId')) {
+      dbUpdates.assigned_doctor_id = updates.assignedDoctorId ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'assignedTherapistId')) {
+      dbUpdates.assigned_therapist_id = updates.assignedTherapistId ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'observationEndDate')) {
+      dbUpdates.observation_end_date = updates.observationEndDate ?? null;
+    }
 
     const { data, error } = await supabase
       .from('children')
@@ -110,6 +118,83 @@ export const screeningService = {
           answers: result.questionnaireAnswers,
         }
       ])
+      .select()
+      .single();
+    return { data, error };
+  },
+};
+
+export const therapySessionsService = {
+  async getSessionsForTherapist(therapistId: string) {
+    const { data, error } = await supabase
+      .from('therapy_sessions')
+      .select('*')
+      .eq('therapist_id', therapistId)
+      .order('scheduled_date', { ascending: true })
+      .order('scheduled_time', { ascending: true });
+    return { data, error };
+  },
+
+  async getSessionsForChild(childId: string) {
+    const { data, error } = await supabase
+      .from('therapy_sessions')
+      .select('*')
+      .eq('child_id', childId)
+      .order('scheduled_date', { ascending: true })
+      .order('scheduled_time', { ascending: true });
+    return { data, error };
+  },
+
+  async getSessionById(id: string) {
+    const { data, error } = await supabase
+      .from('therapy_sessions')
+      .select('*')
+      .eq('id', id)
+      .single();
+    return { data, error };
+  },
+
+  async createSession(input: {
+    childId: string;
+    therapistId: string;
+    type: 'speech' | 'motor' | 'social';
+    scheduledDate: string;
+    scheduledTime: string;
+    goals: string;
+    notes?: string;
+  }) {
+    const { data, error } = await supabase
+      .from('therapy_sessions')
+      .insert([
+        {
+          child_id: input.childId,
+          therapist_id: input.therapistId,
+          type: input.type,
+          scheduled_date: input.scheduledDate,
+          scheduled_time: input.scheduledTime,
+          status: 'scheduled',
+          goals: input.goals,
+          notes: input.notes || null,
+        }
+      ])
+      .select()
+      .single();
+    return { data, error };
+  },
+
+  async updateSession(id: string, updates: {
+    status?: 'scheduled' | 'completed' | 'cancelled';
+    goals?: string;
+    notes?: string;
+  }) {
+    const { data, error } = await supabase
+      .from('therapy_sessions')
+      .update({
+        status: updates.status,
+        goals: updates.goals,
+        notes: updates.notes,
+      })
+      .eq('id', id)
       .select()
       .single();
     return { data, error };

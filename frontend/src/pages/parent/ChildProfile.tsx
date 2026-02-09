@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -15,22 +16,78 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AgentBadge } from "@/components/AgentBadge";
-import { useAppStore } from "@/lib/store";
+import { Child, Report } from "@/lib/store";
+import { childrenService, reportsService } from "@/services/data";
 import { format } from "date-fns";
 
 export default function ChildProfile() {
   const navigate = useNavigate();
   const { childId } = useParams();
-  const { children, getReportsForChild } = useAppStore();
+  const [child, setChild] = useState<Child | null>(null);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const child = children.find((c) => c.id === childId);
-  const reports = child ? getReportsForChild(child.id) : [];
+  useEffect(() => {
+    const loadChild = async () => {
+      if (!childId) return;
+      setLoading(true);
+      setError(null);
+
+      const { data, error } = await childrenService.getChildById(childId);
+      if (error) {
+        setError(error.message || "Failed to load child");
+        setLoading(false);
+        return;
+      }
+
+      const dob = new Date(data.date_of_birth);
+      const age = Number.isNaN(dob.getTime())
+        ? 0
+        : Math.max(0, Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)));
+
+      setChild({
+        id: data.id,
+        name: data.name,
+        dateOfBirth: data.date_of_birth,
+        age,
+        gender: data.gender,
+        screeningStatus: data.screening_status,
+        riskLevel: data.risk_level,
+        assignedDoctorId: data.assigned_doctor_id,
+        assignedTherapistId: data.assigned_therapist_id,
+        observationEndDate: data.observation_end_date,
+      });
+
+      const { data: reportRows } = await reportsService.getReports(data.id);
+      const mappedReports = (reportRows || []).map((report: any) => ({
+        id: report.id,
+        childId: report.child_id,
+        type: report.type,
+        createdAt: new Date(report.created_at),
+        doctorNotes: report.content?.doctorNotes || "",
+        screeningSummary: report.content?.screeningSummary || "",
+        monitoringPlan: report.content?.monitoringPlan,
+        followUpDate: report.content?.followUpDate,
+        diagnosisConfirmation: report.content?.diagnosisConfirmation,
+        developmentalGaps: report.content?.developmentalGaps,
+        therapyRecommendations: report.content?.therapyRecommendations,
+      }));
+
+      setReports(mappedReports);
+      setLoading(false);
+    };
+
+    loadChild();
+  }, [childId]);
 
   if (!child) {
     return (
       <DashboardLayout>
         <div className="text-center py-12">
-          <p className="text-muted-foreground">Child not found</p>
+          <p className="text-muted-foreground">
+            {loading ? "Loading child..." : error || "Child not found"}
+          </p>
           <Button variant="outline" onClick={() => navigate("/parent")} className="mt-4">
             Back to Dashboard
           </Button>

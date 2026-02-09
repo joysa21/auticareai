@@ -1,14 +1,59 @@
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Baby, Plus, ArrowRight } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { ChildCard } from "@/components/ChildCard";
-import { useAppStore } from "@/lib/store";
+import { Child } from "@/lib/store";
+import { childrenService } from "@/services/data";
 
 export default function ChildrenList() {
   const navigate = useNavigate();
-  const { children } = useAppStore();
+  const [children, setChildren] = useState<Child[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadChildren = async () => {
+      setLoading(true);
+      setLoadError(null);
+      const { data, error } = await childrenService.getChildren();
+      if (error) {
+        setLoadError(error.message || "Failed to load children");
+        setLoading(false);
+        return;
+      }
+
+      const normalized = (data || []).map((child: any) => ({
+        id: child.id,
+        name: child.name,
+        dateOfBirth: child.date_of_birth,
+        age: 0,
+        gender: child.gender,
+        screeningStatus: child.screening_status,
+        riskLevel: child.risk_level,
+        assignedDoctorId: child.assigned_doctor_id,
+        assignedTherapistId: child.assigned_therapist_id,
+        observationEndDate: child.observation_end_date,
+      }));
+
+      setChildren(normalized);
+      setLoading(false);
+    };
+
+    loadChildren();
+  }, []);
+
+  const mappedChildren = useMemo(() => {
+    return children.map((child) => {
+      const dob = new Date(child.dateOfBirth);
+      const age = Number.isNaN(dob.getTime())
+        ? child.age
+        : Math.max(0, Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)));
+      return { ...child, age };
+    });
+  }, [children]);
 
   return (
     <DashboardLayout>
@@ -27,9 +72,21 @@ export default function ChildrenList() {
         </div>
       </div>
 
-      {children.length > 0 ? (
+      {loadError && (
+        <div className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          {loadError}
+        </div>
+      )}
+
+      {loading && (
+        <div className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">
+          Loading children...
+        </div>
+      )}
+
+      {!loading && mappedChildren.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {children.map((child, index) => (
+          {mappedChildren.map((child, index) => (
             <motion.div
               key={child.id}
               initial={{ opacity: 0, y: 20 }}
@@ -43,7 +100,7 @@ export default function ChildrenList() {
             </motion.div>
           ))}
         </div>
-      ) : (
+      ) : !loading ? (
         <div className="rounded-2xl border-2 border-dashed border-border p-12 text-center">
           <Baby className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
           <h3 className="text-lg font-medium mb-2">No children registered yet</h3>
@@ -55,7 +112,7 @@ export default function ChildrenList() {
             Add Child Profile
           </Button>
         </div>
-      )}
+      ) : null}
     </DashboardLayout>
   );
 }

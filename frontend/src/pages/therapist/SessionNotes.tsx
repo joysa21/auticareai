@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -13,6 +13,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { therapySessionsService } from "@/services/data";
 
 export default function SessionNotes() {
   const navigate = useNavigate();
@@ -24,8 +25,61 @@ export default function SessionNotes() {
     nextSession: "",
   });
   const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sessionMeta, setSessionMeta] = useState<{
+    scheduledDate?: string;
+    scheduledTime?: string;
+    type?: string;
+  } | null>(null);
 
-  const handleSave = () => {
+  useEffect(() => {
+    const loadSession = async () => {
+      if (!sessionId) return;
+      setLoading(true);
+      setError(null);
+      const { data, error } = await therapySessionsService.getSessionById(sessionId);
+      if (error) {
+        setError(error.message || "Failed to load session");
+        setLoading(false);
+        return;
+      }
+
+      setSessionMeta({
+        scheduledDate: data.scheduled_date,
+        scheduledTime: data.scheduled_time,
+        type: data.type,
+      });
+
+      if (data.notes) {
+        try {
+          const parsed = JSON.parse(data.notes);
+          setNotes({
+            activitiesCompleted: parsed.activitiesCompleted || "",
+            childResponse: parsed.childResponse || "",
+            progress: parsed.progress || "",
+            nextSession: parsed.nextSession || "",
+          });
+        } catch {
+          // ignore parse errors and keep defaults
+        }
+      }
+      setLoading(false);
+    };
+
+    loadSession();
+  }, [sessionId]);
+
+  const handleSave = async () => {
+    if (!sessionId) return;
+    const { error } = await therapySessionsService.updateSession(sessionId, {
+      notes: JSON.stringify(notes),
+      status: "completed",
+    });
+    if (error) {
+      setError(error.message || "Failed to save notes");
+      return;
+    }
     setSaved(true);
     setTimeout(() => {
       navigate("/therapist");
@@ -44,14 +98,26 @@ export default function SessionNotes() {
         <div className="flex items-center gap-4 mt-2 text-muted-foreground">
           <span className="flex items-center gap-1">
             <Calendar className="h-4 w-4" />
-            Today
+            {sessionMeta?.scheduledDate || ""}
           </span>
           <span className="flex items-center gap-1">
             <Clock className="h-4 w-4" />
-            Speech Therapy Session
+            {sessionMeta?.scheduledTime || ""} {sessionMeta?.type ? `${sessionMeta.type} session` : ""}
           </span>
         </div>
       </div>
+
+      {error && (
+        <div className="mb-6 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      {loading && (
+        <div className="mb-6 rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">
+          Loading session...
+        </div>
+      )}
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}

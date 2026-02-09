@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -23,7 +23,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAppStore } from "@/lib/store";
+import { Child } from "@/lib/store";
+import { authService } from "@/services/auth";
+import { childrenService, therapySessionsService } from "@/services/data";
 import { useToast } from "@/hooks/use-toast";
 
 const sessionTypes = [
@@ -53,7 +55,6 @@ const sessionTypes = [
 export default function CreateSession() {
   const navigate = useNavigate();
   const { childId } = useParams();
-  const { children, addTherapySession } = useAppStore();
   const { toast } = useToast();
 
   const [sessionType, setSessionType] = useState<"speech" | "motor" | "social" | "">("");
@@ -61,13 +62,62 @@ export default function CreateSession() {
   const [scheduledTime, setScheduledTime] = useState("");
   const [goals, setGoals] = useState("");
 
-  const child = children.find((c) => c.id === childId);
+  const [child, setChild] = useState<Child | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadUser = async () => {
+      const user = await authService.getCurrentUser();
+      setCurrentUserId(user?.id || null);
+    };
+    loadUser();
+  }, []);
+
+  useEffect(() => {
+    const loadChild = async () => {
+      if (!childId) return;
+      setLoading(true);
+      setError(null);
+      const { data, error } = await childrenService.getChildById(childId);
+      if (error) {
+        setError(error.message || "Failed to load child");
+        setLoading(false);
+        return;
+      }
+
+      const dob = new Date(data.date_of_birth);
+      const age = Number.isNaN(dob.getTime())
+        ? 0
+        : Math.max(0, Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)));
+
+      setChild({
+        id: data.id,
+        name: data.name,
+        dateOfBirth: data.date_of_birth,
+        age,
+        gender: data.gender,
+        screeningStatus: data.screening_status,
+        riskLevel: data.risk_level,
+        assignedDoctorId: data.assigned_doctor_id,
+        assignedTherapistId: data.assigned_therapist_id,
+        observationEndDate: data.observation_end_date,
+      });
+      setLoading(false);
+    };
+
+    loadChild();
+  }, [childId]);
 
   if (!child) {
     return (
       <DashboardLayout>
         <div className="text-center py-12">
-          <p className="text-muted-foreground">Patient not found</p>
+          <p className="text-muted-foreground">
+            {loading ? "Loading patient..." : error || "Patient not found"}
+          </p>
           <Button variant="outline" onClick={() => navigate("/therapist")} className="mt-4">
             Back to Dashboard
           </Button>
@@ -99,7 +149,7 @@ export default function CreateSession() {
     );
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!sessionType || !scheduledDate || !scheduledTime || !goals.trim()) {
@@ -111,24 +161,41 @@ export default function CreateSession() {
       return;
     }
 
-    const newSession = {
-      id: `session-${Date.now()}`,
+    if (!currentUserId) {
+      toast({
+        title: "Not signed in",
+        description: "Please sign in again to create a session.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    const { error } = await therapySessionsService.createSession({
       childId: child.id,
+      therapistId: currentUserId,
       type: sessionType as "speech" | "motor" | "social",
       scheduledDate,
       scheduledTime,
-      status: "scheduled" as const,
       goals: goals.trim(),
-      createdAt: new Date(),
-    };
+    });
 
-    addTherapySession(newSession);
+    if (error) {
+      setIsSaving(false);
+      toast({
+        title: "Failed to create session",
+        description: error.message,
+        variant: "destructive",
+      });
+      return;
+    }
 
     toast({
       title: "Session Created",
       description: `${sessionTypes.find((t) => t.value === sessionType)?.label} session scheduled for ${child.name}.`,
     });
 
+    setIsSaving(false);
     navigate(`/therapist/plan/${child.id}`);
   };
 
@@ -238,9 +305,9 @@ export default function CreateSession() {
               >
                 Cancel
               </Button>
-              <Button type="submit" className="flex-1">
+              <Button type="submit" className="flex-1" disabled={isSaving}>
                 <Save className="mr-2 h-4 w-4" />
-                Create Session
+                {isSaving ? "Creating..." : "Create Session"}
               </Button>
             </div>
           </form>

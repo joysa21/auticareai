@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -12,33 +13,110 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { AgentBadge } from "@/components/AgentBadge";
-import { useAppStore } from "@/lib/store";
-
-const mockSessions = [
-  { id: "1", childName: "Emma Thompson", type: "Speech Therapy", time: "10:00 AM", status: "upcoming" },
-  { id: "2", childName: "Liam Parker", type: "Motor Skills", time: "2:00 PM", status: "upcoming" },
-];
+import { Child } from "@/lib/store";
+import { authService } from "@/services/auth";
+import { childrenService, therapySessionsService } from "@/services/data";
 
 export default function TherapistDashboard() {
   const navigate = useNavigate();
-  const { children } = useAppStore();
+  const [children, setChildren] = useState<Child[]>([]);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadUser = async () => {
+      const user = await authService.getCurrentUser();
+      setCurrentUserId(user?.id || null);
+    };
+    loadUser();
+  }, []);
+
+  useEffect(() => {
+    const loadData = async () => {
+      if (!currentUserId) return;
+      setLoading(true);
+      setLoadError(null);
+
+      const { data: childrenData, error: childrenError } = await childrenService.getChildren();
+      if (childrenError) {
+        setLoadError(childrenError.message || "Failed to load children");
+        setLoading(false);
+        return;
+      }
+
+      const normalizedChildren = (childrenData || []).map((child: any) => ({
+        id: child.id,
+        name: child.name,
+        dateOfBirth: child.date_of_birth,
+        age: 0,
+        gender: child.gender,
+        screeningStatus: child.screening_status,
+        riskLevel: child.risk_level,
+        assignedDoctorId: child.assigned_doctor_id,
+        assignedTherapistId: child.assigned_therapist_id,
+        observationEndDate: child.observation_end_date,
+      }));
+      setChildren(normalizedChildren);
+
+      const { data: sessionsData, error: sessionsError } = await therapySessionsService.getSessionsForTherapist(currentUserId);
+      if (sessionsError) {
+        setLoadError(sessionsError.message || "Failed to load sessions");
+        setLoading(false);
+        return;
+      }
+
+      setSessions(sessionsData || []);
+      setLoading(false);
+    };
+
+    loadData();
+  }, [currentUserId]);
+
+  const mappedChildren = useMemo(() => {
+    return children.map((child) => {
+      const dob = new Date(child.dateOfBirth);
+      const age = Number.isNaN(dob.getTime())
+        ? child.age
+        : Math.max(0, Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)));
+      return { ...child, age };
+    });
+  }, [children]);
+
+  const assignedChildren = currentUserId
+    ? mappedChildren.filter((child) => child.assignedTherapistId === currentUserId)
+    : mappedChildren;
+
+  const today = new Date().toISOString().split("T")[0];
+  const todaysSessions = sessions.filter((session) => session.scheduled_date === today);
+  const sessionView = todaysSessions.map((session) => {
+    const child = mappedChildren.find((c) => c.id === session.child_id);
+    return {
+      id: session.id,
+      childName: child?.name || "Unknown",
+      type: session.type,
+      time: session.scheduled_time,
+      status: session.status,
+    };
+  });
 
   const stats = [
     {
       label: "Active Patients",
-      value: children.length,
+      value: assignedChildren.length,
       icon: Users,
       color: "bg-primary/10 text-primary",
     },
     {
       label: "Sessions Today",
-      value: mockSessions.length,
+      value: sessionView.length,
       icon: Calendar,
       color: "bg-agent-therapy/10 text-agent-therapy",
     },
     {
       label: "Plans Created",
-      value: 8,
+      value: assignedChildren.length,
       icon: FileText,
       color: "bg-success/10 text-success",
     },
@@ -101,7 +179,22 @@ export default function TherapistDashboard() {
           </div>
 
           <div className="space-y-4">
-            {mockSessions.map((session, index) => (
+            {loadError && (
+              <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+                {loadError}
+              </div>
+            )}
+            {loading && (
+              <div className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">
+                Loading sessions...
+              </div>
+            )}
+            {!loading && sessionView.length === 0 && (
+              <div className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">
+                No sessions scheduled for today.
+              </div>
+            )}
+            {!loading && sessionView.map((session, index) => (
               <motion.div
                 key={session.id}
                 initial={{ opacity: 0, x: -10 }}
@@ -119,7 +212,7 @@ export default function TherapistDashboard() {
                       <Clock className="h-4 w-4" />
                       {session.time}
                     </div>
-                    <span className="text-xs text-success">Upcoming</span>
+                    <span className="text-xs text-success">{session.status}</span>
                   </div>
                 </div>
                 <div className="mt-4 flex gap-2">
@@ -145,7 +238,12 @@ export default function TherapistDashboard() {
           </div>
 
           <div className="space-y-4">
-            {children.map((child, index) => (
+            {loading && (
+              <div className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">
+                Loading patients...
+              </div>
+            )}
+            {!loading && assignedChildren.map((child, index) => (
               <motion.div
                 key={child.id}
                 initial={{ opacity: 0, x: -10 }}
@@ -194,9 +292,7 @@ export default function TherapistDashboard() {
           <AgentBadge type="monitoring" size="sm" />
         </div>
         <p className="text-muted-foreground text-sm">
-          All patients are showing positive progress in their therapy goals. Emma has made
-          significant improvements in social interaction, while Liam shows steady progress
-          in motor skills.
+          Review session notes and progress updates to monitor each child’s therapy journey.
         </p>
       </motion.div>
     </DashboardLayout>

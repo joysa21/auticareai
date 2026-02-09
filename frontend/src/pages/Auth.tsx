@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RoleCard } from "@/components/RoleCard";
 import { useAppStore, UserRole } from "@/lib/store";
+import { authService } from "@/services/auth";
 
 type AuthStep = "role" | "form";
 
@@ -57,40 +58,30 @@ export default function Auth() {
     if (!selectedRole && isSignUp) return; // Role is required for signup
 
     try {
-      const endpoint = isSignUp ? 'signup' : 'login';
-      const body = isSignUp ? {
-        full_name: formData.name, // Changed from name to full_name to match backend schema
-        email: formData.email,
-        password: formData.password,
-        role: selectedRole,
-      } : {
-        email: formData.email,
-        password: formData.password,
-      };
+      if (isSignUp) {
+        const { data, error } = await authService.signUp(
+          formData.email,
+          formData.password,
+          formData.name,
+          selectedRole as UserRole
+        );
 
-      const response = await fetch(`http://localhost:3000/api/auth/${endpoint}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
+        if (error) {
+          alert(error.message || "Signup failed");
+          return;
+        }
 
-      const data = await response.json();
+        const profile = await authService.getCurrentUser();
+        const role = profile?.profile?.role || selectedRole || "parent";
 
-      if (data.status === 'success') {
-        const user = {
-          id: data.user.id,
-          name: isSignUp ? formData.name : (data.user.user_metadata?.full_name || "User"),
+        setCurrentUser({
+          id: profile?.id || data.user?.id || "",
+          name: profile?.profile?.full_name || formData.name,
           email: formData.email,
-          role: isSignUp ? selectedRole : (data.user.user_metadata?.role || "parent"), // Fallback role if not present
-        };
+          role,
+        });
 
-        setCurrentUser(user);
-
-        // Navigate to role-specific dashboard
-        const targetRole = isSignUp ? selectedRole : (data.user.user_metadata?.role || "parent");
-        switch (targetRole) {
+        switch (role) {
           case "parent":
             navigate("/parent");
             break;
@@ -104,17 +95,39 @@ export default function Auth() {
             navigate("/parent");
         }
       } else {
-        // Handle validation errors specifically
-        if (data.errors && Array.isArray(data.errors)) {
-          const errorMessages = data.errors.map((err: any) => err.message).join('\n');
-          alert(`Validation Failed:\n${errorMessages}`);
-        } else {
-          alert(data.message || 'Authentication failed');
+        const { data, error } = await authService.signIn(formData.email, formData.password);
+        if (error) {
+          alert(error.message || "Login failed");
+          return;
+        }
+
+        const profile = await authService.getCurrentUser();
+        const role = profile?.profile?.role || "parent";
+
+        setCurrentUser({
+          id: profile?.id || data.user?.id || "",
+          name: profile?.profile?.full_name || "User",
+          email: formData.email,
+          role,
+        });
+
+        switch (role) {
+          case "parent":
+            navigate("/parent");
+            break;
+          case "doctor":
+            navigate("/doctor");
+            break;
+          case "therapist":
+            navigate("/therapist");
+            break;
+          default:
+            navigate("/parent");
         }
       }
     } catch (error) {
-      console.error('Authentication error:', error);
-      alert('An error occurred during authentication');
+      console.error("Authentication error:", error);
+      alert("An error occurred during authentication");
     }
   };
 
