@@ -13,6 +13,17 @@ import {
   Target,
   Lightbulb,
 } from "lucide-react";
+import {
+  CartesianGrid,
+  Label,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { format } from "date-fns";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { AgentPanel, AgentBadge } from "@/components/AgentBadge";
 import { Child, Report, TherapySession, useAppStore } from "@/lib/store";
@@ -25,8 +36,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Progress as ProgressBar } from "@/components/ui/progress";
-import { format } from "date-fns";
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 
 const riskScoreMap: Record<string, number> = {
   low: 25,
@@ -34,157 +50,39 @@ const riskScoreMap: Record<string, number> = {
   high: 75,
 };
 
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const chartConfig = {
+  screenings: {
+    label: "Screenings",
+    color: "hsl(var(--primary))",
+  },
+  reviews: {
+    label: "Doctor reviews",
+    color: "hsl(var(--secondary))",
+  },
+  sessions: {
+    label: "Therapy sessions",
+    color: "hsl(var(--accent))",
+  },
+} as const;
 
-const hashString = (input: string) =>
-  input.split("").reduce((acc, ch) => (acc * 31 + ch.charCodeAt(0)) % 100000, 7);
+const generateMilestones = (childId: string, reports: Report[], sessions: TherapySession[]) => {
+  const childReports = reports.filter((report) => report.childId === childId);
+  const childSessions = sessions.filter((session) => session.childId === childId && session.status === "completed");
 
-const seededMetric = (seed: number, min: number, max: number) =>
-  min + (seed % (max - min + 1));
-
-const deriveProgressSnapshot = (
-  child: Child | undefined,
-  screening: any[],
-  childReports: Report[],
-  childSessions: TherapySession[]
-) => {
-  const sortedScreening = [...(screening || [])].sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  );
-  const latest = sortedScreening[sortedScreening.length - 1];
-  const previous = sortedScreening[sortedScreening.length - 2];
-  const latestRisk = latest ? riskScoreMap[latest.risk_level] ?? 50 : 50;
-  const previousRisk = previous ? riskScoreMap[previous.risk_level] ?? 50 : latestRisk;
-  const riskDelta = previousRisk - latestRisk;
-  const completedSessions = childSessions.filter((s) => s.status === "completed").length;
-  const latestDiagnostic = [...childReports]
-    .filter((r) => r.type === "diagnostic")
-    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
-  const diagnosticGaps = latestDiagnostic?.developmentalGaps || [];
-
-  if (completedSessions === 0) {
-    if (latestDiagnostic) {
-      const preTherapySeed = hashString(`${child?.id || "child"}:${latestDiagnostic.id}:pre-therapy`);
-      const currentScore = clamp(seededMetric(preTherapySeed + 7, 28, 54), 10, 96);
-      const previousScore = clamp(currentScore - seededMetric(preTherapySeed + 13, 0, 4), 8, 95);
-      const engagement = clamp(currentScore + seededMetric(preTherapySeed + 17, -5, 6), 12, 98);
-      const communication = clamp(currentScore + seededMetric(preTherapySeed + 23, -6, 5), 12, 98);
-      const attention = clamp(currentScore + seededMetric(preTherapySeed + 31, -7, 4), 12, 98);
-      const weekSeries = [
-        clamp(previousScore - seededMetric(preTherapySeed + 37, 1, 5), 10, 95),
-        clamp(previousScore - seededMetric(preTherapySeed + 41, 0, 3), 10, 95),
-        previousScore,
-        currentScore,
-      ];
-
-      return {
-        currentScore,
-        previousScore,
-        trendLabel:
-          currentScore > previousScore ? "improving" : currentScore < previousScore ? "declining" : "stable",
-        sourceLabel: "Diagnostic baseline estimate (pre-therapy)",
-        metrics: [
-          { label: "Engagement", value: engagement },
-          { label: "Communication", value: communication },
-          { label: "Attention", value: attention },
-        ],
-        focusAreas:
-          diagnosticGaps.length > 0
-            ? diagnosticGaps.slice(0, 3)
-            : ["Social communication", "Response flexibility", "Joint attention"],
-        weekSeries,
-      };
-    }
-
-    return {
-      currentScore: 0,
-      previousScore: 0,
-      trendLabel: "not started",
-      sourceLabel: "Progress starts after first completed therapy session",
-      metrics: [
-        { label: "Engagement", value: 0 },
-        { label: "Communication", value: 0 },
-        { label: "Attention", value: 0 },
-      ],
-      focusAreas:
-        diagnosticGaps.length > 0
-          ? diagnosticGaps.slice(0, 3)
-          : ["Social communication", "Response flexibility", "Joint attention"],
-      weekSeries: [0, 0, 0, 0],
-    };
-  }
-
-  const baseFromRisk = clamp(Math.round(100 - latestRisk), 15, 90);
-  const sessionBonus = clamp(completedSessions * 3, 0, 15);
-  const currentScore = clamp(baseFromRisk + sessionBonus, 10, 96);
-  const previousScore = clamp(currentScore - riskDelta, 8, 95);
-
-  if (!child && !latestDiagnostic && sortedScreening.length === 0) {
-    return {
-      currentScore: 42,
-      previousScore: 38,
-      trendLabel: "improving",
-      sourceLabel: "Seeded baseline",
-      metrics: [
-        { label: "Engagement", value: 46 },
-        { label: "Communication", value: 41 },
-        { label: "Attention", value: 39 },
-      ],
-      focusAreas: ["Social communication", "Sustained attention", "Turn-taking behavior"],
-      weekSeries: [34, 37, 40, 42],
-    };
-  }
-
-  const seed = hashString(`${child?.id || "child"}:${latestDiagnostic?.id || "diag"}:${completedSessions}`);
-  const engagement = clamp(currentScore + seededMetric(seed + 11, -6, 6), 12, 98);
-  const communication = clamp(currentScore + seededMetric(seed + 17, -7, 5), 12, 98);
-  const attention = clamp(currentScore + seededMetric(seed + 29, -8, 4), 12, 98);
-  const weekSeries = [
-    clamp(previousScore - seededMetric(seed + 3, 2, 6), 10, 95),
-    clamp(previousScore - seededMetric(seed + 5, 0, 4), 10, 95),
-    previousScore,
-    currentScore,
-  ];
-
-  return {
-    currentScore,
-    previousScore,
-    trendLabel: currentScore > previousScore ? "improving" : currentScore < previousScore ? "declining" : "stable",
-    sourceLabel: latestDiagnostic ? "Based on latest diagnostic + sessions" : "Based on screening + sessions",
-    metrics: [
-      { label: "Engagement", value: engagement },
-      { label: "Communication", value: communication },
-      { label: "Attention", value: attention },
-    ],
-    focusAreas:
-      diagnosticGaps.length > 0
-        ? diagnosticGaps.slice(0, 3)
-        : ["Social communication", "Response flexibility", "Joint attention"],
-    weekSeries,
-  };
-};
-
-// Generate mock milestones (reports and sessions)
-const generateMilestones = (childId: string, reports: any[], sessions: any[]) => {
-  const childReports = reports.filter(r => r.childId === childId);
-  const childSessions = sessions.filter(s => s.childId === childId && s.status === "completed");
-  
-  const milestones = [
-    ...childReports.map(r => ({
+  return [
+    ...childReports.map((report) => ({
       type: "report" as const,
-      date: new Date(r.createdAt),
-      label: r.type === "diagnostic" ? "Diagnostic Report" : "Observation Report",
-      color: r.type === "diagnostic" ? "success" : "agent-monitoring",
+      date: new Date(report.createdAt),
+      label: report.type === "diagnostic" ? "Diagnostic Report" : "Observation Report",
+      color: report.type === "diagnostic" ? "success" : "agent-monitoring",
     })),
-    ...childSessions.map(s => ({
+    ...childSessions.map((session) => ({
       type: "session" as const,
-      date: new Date(s.createdAt),
-      label: `${s.type.charAt(0).toUpperCase() + s.type.slice(1)} Session`,
+      date: new Date(session.createdAt),
+      label: `${session.type.charAt(0).toUpperCase() + session.type.slice(1)} Session`,
       color: "primary",
     })),
   ].sort((a, b) => a.date.getTime() - b.date.getTime());
-  
-  return milestones;
 };
 
 export default function Progress() {
@@ -196,6 +94,7 @@ export default function Progress() {
   const [screeningResults, setScreeningResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
   const [monitoringInference, setMonitoringInference] = useState<MonitoringInferenceResponse | null>(null);
   const [monitoringLoading, setMonitoringLoading] = useState(false);
   const [monitoringError, setMonitoringError] = useState<string | null>(null);
@@ -246,6 +145,28 @@ export default function Progress() {
   }, [children, selectedChildId, setSelectedChildId]);
 
   useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setRefreshTick((tick) => tick + 1);
+    }, 15000);
+
+    const handleWindowFocus = () => setRefreshTick((tick) => tick + 1);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setRefreshTick((tick) => tick + 1);
+      }
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
     const loadChildData = async () => {
       if (!selectedChildId) return;
 
@@ -287,9 +208,9 @@ export default function Progress() {
     };
 
     loadChildData();
-  }, [selectedChildId]);
+  }, [selectedChildId, refreshTick]);
 
-  const selectedChild = children.find((c) => c.id === selectedChildId);
+  const selectedChild = children.find((child) => child.id === selectedChildId);
   const childReports = useMemo(
     () => reports.filter((report) => report.childId === selectedChildId),
     [reports, selectedChildId]
@@ -298,15 +219,40 @@ export default function Progress() {
     () => therapySessions.filter((session) => session.childId === selectedChildId),
     [therapySessions, selectedChildId]
   );
-  const completedSessionsCount = useMemo(
-    () => childSessions.filter((session) => session.status === "completed").length,
+  const completedSessions = useMemo(
+    () => childSessions.filter((session) => session.status === "completed"),
     [childSessions]
   );
+  const completedSessionsCount = completedSessions.length;
   const hasCompletedSessions = completedSessionsCount > 0;
-  const progressSnapshot = useMemo(
-    () => deriveProgressSnapshot(selectedChild, screeningResults, childReports, childSessions),
-    [selectedChild, screeningResults, childReports, childSessions]
+
+  const screeningTimelineData = useMemo(() => {
+    const sorted = [...(screeningResults || [])].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+
+    return sorted.map((result, index) => ({
+      date: format(new Date(result.created_at), "MMM d"),
+      fullDate: format(new Date(result.created_at), "MMM d, yyyy"),
+      screenings: index + 1,
+      riskLevel: result.risk_level || "unknown",
+    }));
+  }, [screeningResults]);
+
+  const activityBreakdownData = useMemo(
+    () => [
+      { name: "screenings", value: screeningResults.length, fill: "var(--color-screenings)" },
+      { name: "reviews", value: childReports.length, fill: "var(--color-reviews)" },
+      { name: "sessions", value: completedSessions.length, fill: "var(--color-sessions)" },
+    ],
+    [screeningResults.length, childReports.length, completedSessions.length]
   );
+
+  const hasAnyProgressData = useMemo(
+    () => activityBreakdownData.some((item) => item.value > 0),
+    [activityBreakdownData]
+  );
+
   const milestones = useMemo(
     () => generateMilestones(selectedChildId, reports, therapySessions),
     [selectedChildId, reports, therapySessions]
@@ -393,12 +339,12 @@ export default function Progress() {
       const latestRiskScore = riskScoreMap[latest.risk_level] ?? 50;
       const previousRiskScore = previous ? riskScoreMap[previous.risk_level] ?? 50 : latestRiskScore;
 
-      const completedSessions = therapySessions
+      const orderedCompletedSessions = therapySessions
         .filter((session) => session.childId === selectedChild.id && session.status === "completed")
         .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-      const half = completedSessions.length > 1 ? Math.floor(completedSessions.length / 2) : 0;
-      const previousHalf = half > 0 ? completedSessions.slice(0, half).length : completedSessions.length;
-      const latestHalf = half > 0 ? completedSessions.slice(half).length : completedSessions.length;
+      const half = orderedCompletedSessions.length > 1 ? Math.floor(orderedCompletedSessions.length / 2) : 0;
+      const previousHalf = half > 0 ? orderedCompletedSessions.slice(0, half).length : orderedCompletedSessions.length;
+      const latestHalf = half > 0 ? orderedCompletedSessions.slice(half).length : orderedCompletedSessions.length;
 
       const metricSeries = [
         {
@@ -415,7 +361,7 @@ export default function Progress() {
         },
       ];
 
-      const therapistSessionFeedback = completedSessions.slice(-3).map((session) => ({
+      const therapistSessionFeedback = orderedCompletedSessions.slice(-3).map((session) => ({
         sessionDate: session.scheduledDate,
         strengths: ["Session completed"],
         concerns: [],
@@ -451,7 +397,6 @@ export default function Progress() {
         </p>
       </div>
 
-      {/* Child Selection */}
       <div className="mb-6">
         <label className="text-sm font-medium mb-2 block">Select Child</label>
         <Select value={selectedChildId} onValueChange={setSelectedChildId}>
@@ -466,9 +411,10 @@ export default function Progress() {
             ))}
           </SelectContent>
         </Select>
+        {loading && <p className="mt-2 text-xs text-muted-foreground">Loading progress data...</p>}
+        {loadError && <p className="mt-2 text-xs text-destructive">{loadError}</p>}
       </div>
 
-      {/* Explainer */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -479,76 +425,182 @@ export default function Progress() {
           <div>
             <p className="text-sm font-medium">Understanding the Progress Curve</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Progress curves reflect cumulative learning and therapy impact over time. 
-              Each therapy session and diagnostic milestone contributes to the developmental trajectory.
+              The graph shows how many screenings have been completed over time, while the pie chart
+              shows how activity is split across screenings, doctor reviews, and therapist sessions.
             </p>
           </div>
         </div>
       </motion.div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Main Snapshot */}
         <div className="lg:col-span-2">
           <div className="rounded-2xl border border-border bg-card p-6 shadow-card">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-xl font-semibold">Progress Snapshot</h2>
-                <p className="text-sm text-muted-foreground">
-                  {selectedChild?.name}'s current development view
-                </p>
+                <p className="text-sm text-muted-foreground">{selectedChild?.name}'s activity overview</p>
               </div>
               <AgentBadge type="monitoring" size="sm" />
             </div>
 
-            <div className="rounded-xl border border-border bg-muted/30 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <p className="text-sm text-muted-foreground">{progressSnapshot.sourceLabel}</p>
-                <p className="text-xs text-muted-foreground">
-                  4-week trend: {progressSnapshot.weekSeries.join(" → ")}
+            <div className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
+              <div className="rounded-xl border border-border bg-muted/30 p-4">
+                <div>
+                  <p className="text-sm font-medium">Screening Progress Timeline</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Number of screenings completed by date
+                  </p>
+                </div>
+                <div className="mt-4 h-[260px]">
+                  {screeningTimelineData.length > 0 ? (
+                    <ChartContainer config={chartConfig} className="h-full w-full">
+                      <LineChart
+                        accessibilityLayer
+                        data={screeningTimelineData}
+                        margin={{ left: 8, right: 8, top: 10, bottom: 8 }}
+                      >
+                        <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                        <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
+                        <YAxis
+                          allowDecimals={false}
+                          tickLine={false}
+                          axisLine={false}
+                          tickMargin={8}
+                          width={30}
+                          domain={[0, Math.max(1, screeningTimelineData.length)]}
+                        />
+                        <ChartTooltip
+                          cursor={false}
+                          content={
+                            <ChartTooltipContent
+                              labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || "No data"}
+                              formatter={(value) => [
+                                <span className="font-medium">
+                                  {value} screening{Number(value) === 1 ? "" : "s"}
+                                </span>,
+                                "Screenings",
+                              ]}
+                            />
+                          }
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="screenings"
+                          stroke="var(--color-screenings)"
+                          strokeWidth={3}
+                          dot={{ r: 4, strokeWidth: 0, fill: "var(--color-screenings)" }}
+                          activeDot={{ r: 5 }}
+                        />
+                      </LineChart>
+                    </ChartContainer>
+                  ) : (
+                    <div className="flex h-full flex-col justify-between rounded-lg border border-dashed border-border/70 bg-background/70 p-5">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">No progress yet</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          The graph will start plotting after the first screening is completed.
+                        </p>
+                      </div>
+                      <div className="space-y-16 pb-3">
+                        <div className="border-t border-dashed border-border/70" />
+                        <div className="border-t border-dashed border-border/70" />
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span>Screening date</span>
+                        <span>Count</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border bg-card p-4">
+                <div>
+                  <p className="text-sm font-medium">Care Activity Breakdown</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Screenings, doctor reviews, and therapist sessions
+                  </p>
+                </div>
+                <div className="mt-4 h-[260px] overflow-hidden">
+                  {hasAnyProgressData ? (
+                    <ChartContainer config={chartConfig} className="h-full w-full">
+                      <PieChart accessibilityLayer>
+                        <ChartTooltip
+                          cursor={false}
+                          content={<ChartTooltipContent hideLabel nameKey="name" />}
+                        />
+                        <Pie
+                          data={activityBreakdownData.filter((item) => item.value > 0)}
+                          dataKey="value"
+                          nameKey="name"
+                          innerRadius={58}
+                          outerRadius={84}
+                          strokeWidth={2}
+                        >
+                          <Label
+                            content={({ viewBox }) => {
+                              if (!viewBox || !("cx" in viewBox) || !("cy" in viewBox)) return null;
+                              return (
+                                <text
+                                  x={viewBox.cx}
+                                  y={viewBox.cy}
+                                  textAnchor="middle"
+                                  dominantBaseline="middle"
+                                >
+                                  <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-2xl font-semibold">
+                                    {activityBreakdownData.reduce((sum, item) => sum + item.value, 0)}
+                                  </tspan>
+                                  <tspan x={viewBox.cx} y={viewBox.cy + 20} className="fill-muted-foreground text-xs">
+                                    total items
+                                  </tspan>
+                                </text>
+                              );
+                            }}
+                          />
+                        </Pie>
+                        <ChartLegend
+                          content={<ChartLegendContent nameKey="name" className="flex-wrap gap-3" />}
+                        />
+                      </PieChart>
+                    </ChartContainer>
+                  ) : (
+                    <div className="flex h-full flex-col items-center justify-center rounded-lg border border-dashed border-border/70 bg-background/70 px-4 text-center">
+                      <div className="flex h-28 w-28 items-center justify-center rounded-full border-[10px] border-muted" />
+                      <p className="mt-4 text-sm font-medium text-foreground">No progress yet</p>
+                      <p className="mt-1 max-w-[220px] text-xs text-muted-foreground">
+                        The pie chart will appear after screenings, doctor reviews, or therapist sessions are recorded.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-border bg-card p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Current status</p>
+                <p className="mt-2 text-lg font-semibold">
+                  {hasAnyProgressData
+                    ? `${screeningResults.length} screening record${screeningResults.length === 1 ? "" : "s"}`
+                    : "No progress yet"}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {screeningTimelineData.length > 0
+                    ? `Latest screening logged on ${screeningTimelineData[screeningTimelineData.length - 1].fullDate}.`
+                    : "Once screenings, doctor reviews, or completed therapy sessions are added, the charts will update automatically."}
                 </p>
               </div>
-              <div className="flex items-end justify-between gap-3 mb-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">Overall Progress</p>
-                  <p className="text-3xl font-semibold">{progressSnapshot.currentScore}%</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground">Previous</p>
-                  <p className="text-lg font-medium">{progressSnapshot.previousScore}%</p>
-                </div>
-              </div>
-              <ProgressBar value={progressSnapshot.currentScore} />
-              <p className="text-xs text-muted-foreground mt-2">
-                Trend status: {progressSnapshot.trendLabel}
-              </p>
-            </div>
-
-            <div className="grid sm:grid-cols-3 gap-3 mt-4">
-              {progressSnapshot.metrics.map((metric) => (
-                <div key={metric.label} className="rounded-xl border border-border bg-card p-3">
-                  <p className="text-xs text-muted-foreground">{metric.label}</p>
-                  <p className="text-xl font-semibold mt-1">{metric.value}%</p>
-                  <ProgressBar value={metric.value} className="mt-2" />
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-4 rounded-xl border border-border bg-card p-4">
-              <p className="text-sm font-medium mb-2">Current Focus Areas</p>
-              <div className="flex flex-wrap gap-2">
-                {progressSnapshot.focusAreas.map((area, idx) => (
-                  <span
-                    key={`${area}-${idx}`}
-                    className="rounded-full border border-border bg-muted px-3 py-1 text-xs"
-                  >
-                    {area}
-                  </span>
-                ))}
+              <div className="rounded-xl border border-border bg-card p-4">
+                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Monitoring note</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {hasAnyProgressData
+                    ? "This view tracks when screenings happened and how care activity is distributed across reviews and therapy."
+                    : "There are no markings yet because no screenings, doctor reviews, or completed therapist sessions have been recorded."}
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Milestones Timeline */}
           {milestones.length > 0 && (
             <div className="mt-6 rounded-2xl border border-border bg-card p-6 shadow-card">
               <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -594,7 +646,6 @@ export default function Progress() {
           )}
         </div>
 
-        {/* AI Insights Panel */}
         <div>
           <AgentPanel type="monitoring">
             <h3 className="font-semibold mb-4 flex items-center gap-2">
@@ -648,11 +699,12 @@ export default function Progress() {
             </div>
           </AgentPanel>
 
-          {/* Feedback Loop Indicator */}
           <div className="mt-4 rounded-2xl border border-success/30 bg-success/5 p-4">
             <div className="flex items-center gap-2 mb-2">
               <MessageSquare className="h-5 w-5 text-success" />
-              <span className="font-medium text-sm">{hasCompletedSessions ? "Feedback Loop Active" : "Feedback Loop Pending"}</span>
+              <span className="font-medium text-sm">
+                {hasCompletedSessions ? "Feedback Loop Active" : "Feedback Loop Pending"}
+              </span>
             </div>
             <p className="text-xs text-muted-foreground">
               {hasCompletedSessions
@@ -661,7 +713,6 @@ export default function Progress() {
             </p>
           </div>
 
-          {/* Simulated Recommendation */}
           <div className="mt-4 rounded-2xl border border-accent/30 bg-accent/5 p-4">
             <div className="flex items-center gap-2 mb-2">
               <Lightbulb className="h-5 w-5 text-accent" />
@@ -678,7 +729,6 @@ export default function Progress() {
         </div>
       </div>
 
-      {/* Weekly Check-in Reminder */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -695,8 +745,6 @@ export default function Progress() {
           </div>
         </div>
       </motion.div>
-
-      {/* Graph-heavy tab removed from this page to keep progress view concise and focused. */}
     </DashboardLayout>
   );
 }
