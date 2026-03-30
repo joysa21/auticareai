@@ -1,0 +1,14 @@
+# Minimal dependencies for auti_care_helper.py
+# macOS (Apple Silicon): prefer tensorflow-macos + tensorflow-metal
+
+numpy>=1.24.0
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# Choose ONE TensorFlow option:
+# 1) Apple Silicon (recommended on newer Macs)
+# tensorflow-macos>=2.15.0
+# tensorflow-metal>=1.1.0
+
+# 2) Standard TensorFlow (Intel Linux/Windows/macOS)
+tensorflow>=2.15.0

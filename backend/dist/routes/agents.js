@@ -26,6 +26,7 @@ const therapyPlanningSchema = zod_1.z.object({
 });
 const therapyPlanningByChildSchema = zod_1.z.object({
     childId: zod_1.z.string().uuid(),
+    forceRefresh: zod_1.z.boolean().optional().default(false),
 });
 const monitoringInferenceSchema = zod_1.z.object({
     childName: zod_1.z.string().min(1),
@@ -254,7 +255,7 @@ router.post('/therapy-planning/by-child/generate', async (req, res) => {
     if (!parsed.success) {
         return res.status(400).json({ error: 'Invalid therapy planning generate payload', details: parsed.error.flatten() });
     }
-    const { childId } = parsed.data;
+    const { childId, forceRefresh } = parsed.data;
     try {
         const diagnostic = await agentOrchestrationService_1.agentOrchestrationService.getLatestDiagnosticReportForChild(childId);
         if (!diagnostic?.content) {
@@ -266,7 +267,7 @@ router.post('/therapy-planning/by-child/generate', async (req, res) => {
             diagnosticCreatedAt: diagnostic.created_at,
         });
         const existing = await agentOrchestrationService_1.agentOrchestrationService.getTherapyPlanForSourceReport(childId, diagnostic.id);
-        if (existing?.plan_json && existing.generated_by === 'gemini') {
+        if (!forceRefresh && existing?.plan_json && existing.generated_by === 'gemini') {
             console.log('[Agents API] therapy-planning/by-child/generate cache hit', {
                 childId,
                 sourceReportId: diagnostic.id,
@@ -281,6 +282,13 @@ router.post('/therapy-planning/by-child/generate', async (req, res) => {
                     cached: true,
                 },
                 sourceReportId: diagnostic.id,
+            });
+        }
+        if (forceRefresh && existing?.plan_json) {
+            console.log('[Agents API] therapy-planning/by-child/generate force refresh requested; bypassing cache.', {
+                childId,
+                sourceReportId: diagnostic.id,
+                existingGeneratedBy: existing.generated_by,
             });
         }
         if (existing?.plan_json && existing.generated_by === 'deterministic') {

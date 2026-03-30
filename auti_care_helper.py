@@ -2,7 +2,10 @@
 Standalone Helper for Integrating AutiCare AI Model into other projects.
 Usage:
     from auti_care_helper import AutismDetector
-    detector = AutismDetector('path/to/best_autism_detector_model.h5')
+    # Option 1: auto-load default model from ./models/best_autism_detector_model.h5
+    detector = AutismDetector()
+    # Option 2: pass explicit model path
+    # detector = AutismDetector('/absolute/path/to/your_model.h5')
     result = detector.predict_image('child_photo.jpg')
     print(result['diagnosis'], result['confidence'])
 """
@@ -11,12 +14,63 @@ import numpy as np
 import cv2
 from PIL import Image
 import os
+from pathlib import Path
+
+
+DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "best_autism_detector_model.h5"
+
+
+def _legacy_binary_operands(x, y):
+    if isinstance(x, (list, tuple)) and len(x) == 2:
+        return x[0], x[1]
+    return x, y
+
+
+class LegacyMultiply(tf.keras.layers.Layer):
+    """Compatibility layer for legacy H5 models serialized with class_name='Multiply'."""
+
+    def call(self, x, y=1.0):
+        left, right = _legacy_binary_operands(x, y)
+        return tf.math.multiply(left, right)
+
+
+class TrueDivide(tf.keras.layers.Layer):
+    """Compatibility layer for legacy H5 models serialized with class_name='TrueDivide'."""
+
+    def call(self, x, y=1.0):
+        left, right = _legacy_binary_operands(x, y)
+        return tf.math.truediv(left, right)
+
+
+class LegacySubtract(tf.keras.layers.Layer):
+    """Compatibility layer for legacy H5 models serialized with class_name='Subtract'."""
+
+    def call(self, x, y=0.0):
+        left, right = _legacy_binary_operands(x, y)
+        return tf.math.subtract(left, right)
 
 class AutismDetector:
-    def __init__(self, model_path):
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model file not found at {model_path}")
-        self.model = tf.keras.models.load_model(model_path)
+    def __init__(self, model_path=None):
+        resolved_model_path = Path(model_path).expanduser().resolve() if model_path else DEFAULT_MODEL_PATH
+
+        if not resolved_model_path.exists():
+            raise FileNotFoundError(
+                f"Model file not found at {resolved_model_path}. "
+                f"Pass model_path explicitly or place the model at {DEFAULT_MODEL_PATH}."
+            )
+
+        try:
+            self.model = tf.keras.models.load_model(str(resolved_model_path))
+        except Exception:
+            self.model = tf.keras.models.load_model(
+                str(resolved_model_path),
+                custom_objects={
+                    "Multiply": LegacyMultiply,
+                    "TrueDivide": TrueDivide,
+                    "Subtract": LegacySubtract,
+                },
+                compile=False,
+            )
         self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
     def is_human_present(self, pil_image):

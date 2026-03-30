@@ -44,7 +44,7 @@ router.post("/screen", upload.single("video"), async (req: Request, res: Respons
       req.file.originalname
     );
 
-    const response = await nodeFetch(`${PYTHON_API}/api/screen`, {
+    const response = await nodeFetch(`${PYTHON_API}/api/screen-hybrid`, {
       method: "POST",
       body: formData,
       headers: formData.getHeaders(),

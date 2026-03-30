@@ -6,10 +6,11 @@ const GEMINI_URL_BASE = 'https://generativelanguage.googleapis.com/v1beta/models
 const GEMINI_MODELS = (process.env.GEMINI_MODELS?.split(',').map((m) => m.trim()).filter(Boolean) || [
     'gemini-2.5-flash',
 ]);
-const CLINICAL_SUMMARY_MIN_WORDS = 12;
-const CLINICAL_SUMMARY_MAX_WORDS = 24;
-const THERAPY_PLAN_MIN_WORDS = 12;
-const THERAPY_PLAN_MAX_WORDS = 24;
+const CLINICAL_SUMMARY_MIN_WORDS = Number(process.env.CLINICAL_SUMMARY_MIN_WORDS || 55);
+const CLINICAL_SUMMARY_MAX_WORDS = Number(process.env.CLINICAL_SUMMARY_MAX_WORDS || 100);
+const THERAPY_PLAN_MIN_WORDS = Number(process.env.THERAPY_PLAN_MIN_WORDS || 120);
+const THERAPY_PLAN_MAX_WORDS = Number(process.env.THERAPY_PLAN_MAX_WORDS || 220);
+const LLM_DEBUG_LOG = String(process.env.LLM_DEBUG_LOG || '').toLowerCase() === 'true';
 exports.agentOrchestrationService = {
     async getLatestClinicalSummaryForChild(childId) {
         const { data, error } = await supabase_1.supabase
@@ -177,11 +178,11 @@ exports.agentOrchestrationService = {
         const textInference = await this.tryGeminiText({
             instruction: [
                 'You are a clinical assistant for doctors reviewing autism screening outputs.',
-                `Write exactly one short English inference sentence for doctor-facing UI, ${CLINICAL_SUMMARY_MIN_WORDS}-${CLINICAL_SUMMARY_MAX_WORDS} words.`,
-                'Start with reported risk level (and confidence if available).',
-                'Then include the most important objective signal insight (value vs baseline).',
+                `Write one detailed doctor-facing English paragraph (${CLINICAL_SUMMARY_MIN_WORDS}-${CLINICAL_SUMMARY_MAX_WORDS} words, 4-6 sentences).`,
+                'Start with reported risk level (and confidence if available), then explain trend/clinical meaning.',
+                'Include the most important objective signal insight (value vs baseline) and at least one implication.',
                 'Mention relevant behavioral indicators if present.',
-                'End with one practical clinical next step (evaluation, follow-up, or referral).',
+                'End with practical clinical next steps (evaluation, follow-up cadence, or referral criteria).',
                 'No markdown, no bullets, no headings, and no prefixes like "Sure", "Here is", or "Summary:".',
             ].join(' '),
             payload: input,
@@ -217,15 +218,29 @@ exports.agentOrchestrationService = {
         const textInference = await this.tryGeminiText({
             instruction: [
                 'You are a pediatric therapy planning assistant.',
-                `Write exactly one short English inference sentence (${THERAPY_PLAN_MIN_WORDS}-${THERAPY_PLAN_MAX_WORDS} words).`,
-                'Focus on top priorities, immediate therapist actions, and one home carryover suggestion.',
+                `Write one detailed English paragraph (${THERAPY_PLAN_MIN_WORDS}-${THERAPY_PLAN_MAX_WORDS} words, 4-6 sentences).`,
+                'Focus on top priorities, immediate therapist actions, expected short-term outcomes, and one home carryover suggestion.',
                 'No markdown, no bullets, no headings.',
             ].join(' '),
             payload: input,
         });
         if (textInference?.text) {
+            if (LLM_DEBUG_LOG) {
+                console.log('[Agents Service] Therapy plan Gemini raw output:', {
+                    model: textInference.model,
+                    wordCount: this.countWords(textInference.text),
+                    text: textInference.text,
+                });
+            }
             let cleaned = this.cleanClinicalText(textInference.text);
             cleaned = await this.ensureTherapyPlanWordRange(cleaned, input);
+            if (LLM_DEBUG_LOG) {
+                console.log('[Agents Service] Therapy plan cleaned output:', {
+                    model: textInference.model,
+                    wordCount: this.countWords(cleaned),
+                    text: cleaned,
+                });
+            }
             data = {
                 ...data,
                 aiInsightsParagraph: cleaned,
@@ -362,7 +377,7 @@ exports.agentOrchestrationService = {
         }
         const rewrite = await this.tryGeminiText({
             instruction: [
-                `Rewrite DRAFT as exactly one short English inference sentence with ${CLINICAL_SUMMARY_MIN_WORDS}-${CLINICAL_SUMMARY_MAX_WORDS} words.`,
+                `Rewrite DRAFT as one detailed English paragraph with ${CLINICAL_SUMMARY_MIN_WORDS}-${CLINICAL_SUMMARY_MAX_WORDS} words and 4-6 sentences.`,
                 'Keep only facts present in INPUT_JSON and DRAFT.',
                 'No markdown, no bullets, no headings.',
             ].join(' '),
@@ -388,7 +403,7 @@ exports.agentOrchestrationService = {
         }
         const rewrite = await this.tryGeminiText({
             instruction: [
-                `Rewrite DRAFT as exactly one short English inference sentence with ${THERAPY_PLAN_MIN_WORDS}-${THERAPY_PLAN_MAX_WORDS} words.`,
+                `Rewrite DRAFT as one detailed English paragraph with ${THERAPY_PLAN_MIN_WORDS}-${THERAPY_PLAN_MAX_WORDS} words and 4-6 sentences.`,
                 'Keep only facts present in INPUT_JSON and DRAFT.',
                 'No markdown, no bullets, no headings.',
             ].join(' '),
@@ -552,6 +567,12 @@ exports.agentOrchestrationService = {
                     console.warn('[Agents Service] Gemini returned empty text for model:', model);
                     continue;
                 }
+                if (LLM_DEBUG_LOG) {
+                    console.log('[Agents Service] Gemini JSON raw text:', {
+                        model,
+                        text,
+                    });
+                }
                 const parsed = this.tryParseJsonBlock(text);
                 if (!parsed) {
                     console.warn('[Agents Service] Gemini raw text (first 500 chars):', text.slice(0, 500));
@@ -624,6 +645,13 @@ exports.agentOrchestrationService = {
                 if (!text || !text.trim()) {
                     console.warn('[Agents Service] Gemini text fallback returned empty text for model:', model);
                     continue;
+                }
+                if (LLM_DEBUG_LOG) {
+                    console.log('[Agents Service] Gemini text raw output:', {
+                        model,
+                        wordCount: this.countWords(text),
+                        text,
+                    });
                 }
                 return { text: text.trim(), model };
             }
