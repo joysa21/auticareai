@@ -432,6 +432,35 @@ export default function DoctorReview() {
                 </p>
               </div>
 
+              {cvReport.confidence_score && (
+                <AgentPanel type="screening">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Eye className="h-5 w-5" />
+                    <h3 className="font-semibold">3-Frame Model Analysis</h3>
+                  </div>
+                  
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-lg bg-blue-50 dark:bg-blue-950/20 p-4 border border-blue-200 dark:border-blue-900">
+                      <p className="text-sm text-muted-foreground mb-2">Model Confidence</p>
+                      <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                        {cvReport.confidence_score.model_confidence_percent ?? "-"}%
+                      </p>
+                    </div>
+                    
+                    <div className="rounded-lg bg-purple-50 dark:bg-purple-950/20 p-4 border border-purple-200 dark:border-purple-900">
+                      <p className="text-sm text-muted-foreground mb-2">Autism Probability</p>
+                      <p className="text-3xl font-bold text-purple-600 dark:text-purple-400">
+                        {cvReport.confidence_score.autism_probability_percent ?? "-"}%
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <p className="text-xs text-muted-foreground mt-4">
+                    Analysis based on video frames extracted at 15%, 50%, and 85% of video duration
+                  </p>
+                </AgentPanel>
+              )}
+
               <div className="grid gap-3 sm:grid-cols-2">
                 {Object.entries(cvReport.metrics.objective_signals).map(([key, value]) => (
                   <div key={key} className="rounded-lg bg-muted/50 p-3">

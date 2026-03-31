@@ -6,6 +6,8 @@ screening_report.json
 backend/node_modules/
 backend/uploads/
 cv/AutiCare/temp_uploads/
+cv/AutiCare/data/image_model/
+cv/AutiCare/data/video_model/
 **/.env
 **/.env.*
 !**/.env.example

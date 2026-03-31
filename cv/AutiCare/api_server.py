@@ -13,6 +13,7 @@ import tempfile
 from autism_screening_model import AutismScreeningModel, BehavioralMetrics
 from typing import Optional
 import logging
+from hybrid_frame_pipeline import HybridFramePipeline
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -36,6 +37,8 @@ app.add_middleware(
 
 # Global model instance (loaded once at startup)
 screening_model = None
+hybrid_frame_pipeline = None
+hybrid_pipeline_error = None
 
 # Create temporary directory for uploads
 UPLOAD_DIR = Path("./temp_uploads")
@@ -45,10 +48,20 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 @app.on_event("startup")
 async def startup_event():
     """Initialize the screening model on server startup"""
-    global screening_model
+    global screening_model, hybrid_frame_pipeline, hybrid_pipeline_error
     logger.info("Initializing Autism Screening Model...")
     screening_model = AutismScreeningModel()
     logger.info("Model initialized successfully!")
+
+    logger.info("Initializing 3-frame image confidence pipeline...")
+    try:
+        hybrid_frame_pipeline = HybridFramePipeline()
+        hybrid_pipeline_error = None
+        logger.info("Hybrid frame pipeline initialized successfully!")
+    except Exception as e:
+        hybrid_frame_pipeline = None
+        hybrid_pipeline_error = str(e)
+        logger.warning(f"Hybrid frame pipeline unavailable: {e}")
 
 
 @app.on_event("shutdown")
@@ -75,9 +88,12 @@ async def health_check():
     return {
         "status": "healthy",
         "model_loaded": screening_model is not None,
+        "hybrid_frame_pipeline_loaded": hybrid_frame_pipeline is not None,
+        "hybrid_frame_pipeline_error": hybrid_pipeline_error,
         "endpoints": {
             "screening": "/api/screen",
-            "metrics": "/api/metrics"
+            "metrics": "/api/metrics",
+            "hybrid_screening": "/api/screen-hybrid"
         }
     }
 
@@ -143,6 +159,80 @@ async def screen_video(
     
     finally:
         # Clean up temporary file
+        if temp_file_path.exists():
+            temp_file_path.unlink()
+
+
+@app.post("/api/screen-hybrid")
+async def screen_video_hybrid(
+    video: UploadFile = File(...),
+    save_report: bool = False,
+    include_frame_details: bool = False
+):
+    """
+    Hybrid endpoint:
+    1) CV behavioral screening report from full video
+    2) Image-model confidence from 3 representative frames (start/middle/end)
+
+    Frontend can show only:
+    - screening_report
+    - confidence_score
+    """
+
+    if not screening_model:
+        raise HTTPException(status_code=503, detail="Screening model not loaded")
+
+    if not hybrid_frame_pipeline:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Hybrid frame pipeline not available: {hybrid_pipeline_error}"
+        )
+
+    if not video.filename.endswith((".mp4", ".avi", ".mov")):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file format. Please upload MP4, AVI, or MOV video."
+        )
+
+    temp_file_path = UPLOAD_DIR / f"temp_{video.filename}"
+    processing_steps = []
+
+    try:
+        with temp_file_path.open("wb") as buffer:
+            shutil.copyfileobj(video.file, buffer)
+        processing_steps.append("video_uploaded")
+
+        logger.info(f"[Hybrid] Processing video: {video.filename}")
+
+        metrics = screening_model.process_video(str(temp_file_path))
+        processing_steps.append("cv_screening_complete")
+
+        report_path = None
+        if save_report:
+            report_path = f"screening_report_{video.filename.split('.')[0]}.json"
+
+        report = screening_model.generate_report(metrics, output_path=report_path, quiet=True)
+        processing_steps.append("screening_report_generated")
+
+        frame_analysis = hybrid_frame_pipeline.analyze_video(str(temp_file_path))
+        processing_steps.append("three_frame_analysis_complete")
+
+        response = {
+            "screening_report": report,
+            "confidence_score": frame_analysis["overall"]
+        }
+
+        if include_frame_details:
+            response["frame_details"] = frame_analysis["frame_results"]
+            response["processing_steps"] = processing_steps
+
+        return JSONResponse(content=response)
+
+    except Exception as e:
+        logger.error(f"Error in hybrid screening: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Hybrid processing error: {str(e)}")
+
+    finally:
         if temp_file_path.exists():
             temp_file_path.unlink()
 

@@ -8,6 +8,11 @@ export type CvReport = {
     objective_signals: Record<string, { value: string; baseline: string; status: string }>;
     behavioral_indicators: Record<string, boolean>;
   };
+  confidence_score?: {
+    model_confidence_percent?: number;
+    autism_probability_percent?: number;
+    [key: string]: unknown;
+  } | null;
 };
 
 const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
