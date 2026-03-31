@@ -17,7 +17,7 @@ import os
 from pathlib import Path
 
 
-DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "models" / "best_autism_detector_model.h5"
+DEFAULT_MODEL_PATH = Path(__file__).resolve().parents[2] / "models" / "best_autism_detector_model.h5"
 
 
 def _legacy_binary_operands(x, y):

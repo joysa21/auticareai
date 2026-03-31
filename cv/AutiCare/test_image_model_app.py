@@ -19,9 +19,9 @@ from sklearn.metrics import (
 )
 import matplotlib.pyplot as plt
 
-# Add root directory to path to access auti_care_helper
-# Path: cv/AutiCare/test_image_model_app.py -> need to go up 3 levels to root
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# Add current directory to path to access auti_care_helper
+# Path: cv/AutiCare/test_image_model_app.py -> auti_care_helper.py is in same directory
+sys.path.insert(0, str(Path(__file__).parent))
 
 from auti_care_helper import AutismDetector
 

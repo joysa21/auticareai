@@ -2,7 +2,7 @@
 Hybrid frame-based image scoring pipeline.
 
 Keeps all orchestration inside cv/AutiCare while reusing AutismDetector
-from auti_care_helper.py at project root.
+from auti_care_helper.py in the same directory.
 """
 
 from __future__ import annotations
@@ -17,9 +17,6 @@ from PIL import Image
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_IMAGE_MODEL_PATH = PROJECT_ROOT / "models" / "best_autism_detector_model.h5"
-
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 try:
     from auti_care_helper import AutismDetector
