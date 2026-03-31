@@ -1,41 +1,33 @@
-# Autism Screening CV Model - Requirements (Updated for Mac ARM64)
+# Minimal dependencies for auti_care_helper.py
+# macOS (Apple Silicon): prefer tensorflow-macos + tensorflow-metal
 
-# Core computer vision
-opencv-python>=4.8.0
-mediapipe>=0.10.30  # Updated to available version
-
-# Deep learning (for advanced classification)
-# Required for auti_care_helper .h5 inference in hybrid pipeline
-tensorflow>=2.15.0
-torch>=2.0.0
-torchvision>=0.15.0
-
-# Scientific computing
 numpy>=1.24.0
-scipy>=1.11.0
+opencv-python>=4.8.0
 Pillow>=10.0.0
 
-# Data handling
+# Choose ONE TensorFlow option:
+# 1) Apple Silicon (recommended on newer Macs)
+# tensorflow-macos>=2.15.0
+# tensorflow-metal>=1.1.0
+
+# 2) Standard TensorFlow (Intel Linux/Windows/macOS)
+tensorflow>=2.15.0
+
+# Core CV/ML helpers used by hybrid pipeline and analytics
+mediapipe>=0.10.30
+scipy>=1.11.0
 pandas>=2.1.0
-
-# Visualization
-matplotlib>=3.8.0   # For Streamlit app visualizations
-# seaborn>=0.13.0    # Commented out - not needed for API deployment
-
-# Streamlit for testing apps
-streamlit>=1.28.0
-plotly>=5.18.0      # Enhanced visualizations for Streamlit
-
-# Video processing
-# moviepy>=1.0.3     # Commented out - use OpenCV instead for lighter deployment
-
-# ML utilities
 scikit-learn>=1.3.0
-
-# Progress bars
 tqdm>=4.66.0
 
-# API and web integration (for deployment)
+# API and web integration (deployment)
 fastapi>=0.109.0
 uvicorn>=0.27.0
 python-multipart>=0.0.6
+
+# Optional local/testing dependencies
+matplotlib>=3.8.0
+streamlit>=1.28.0
+plotly>=5.18.0
+# torch>=2.0.0
+# torchvision>=0.15.0
